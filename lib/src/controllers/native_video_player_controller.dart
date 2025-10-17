@@ -1,33 +1,28 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../enums/native_video_player_event.dart';
 import '../models/native_video_player_media_info.dart';
 import '../models/native_video_player_quality.dart';
+import '../models/native_video_player_state.dart';
+import '../platform/video_player_method_channel.dart';
 
-/// Controller for managing native iOS video player via platform channels
+/// Controller for managing native video player via platform channels
 ///
-/// This controller bridges Flutter and native iOS AVPlayerViewController using
-/// MethodChannel for commands and EventChannel for state updates. State is managed
-/// through Riverpod providers for reactive UI updates.
+/// This controller bridges Flutter and native AVPlayerViewController using
+/// MethodChannel for commands and EventChannel for state updates.
 ///
 /// **Usage:**
 /// ```dart
 /// final controller = NativeVideoPlayerController(
-///   ref: ref,
 ///   id: videoId,
 ///   autoPlay: true,
 /// );
-/// await controller.load(platformViewId: platformViewId, url: 'https://example.com/video.m3u8');
+/// await controller.load(url: 'https://example.com/video.m3u8');
 /// ```
-///
-/// **State Access:**
-/// Access state through instance providers:
-/// - `controller.nativeVideoPlayerStateProvider` - Current player state
-/// - `controller.nativeVideoPlayerIsPlayingProvider` - Is playing boolean
-/// - `controller.nativeVideoPlayerErrorProvider` - Error message if any
 ///
 /// **Platform Communication:**
 /// - MethodChannel: Flutter → Native (play, pause, seek, etc.)
@@ -44,7 +39,7 @@ class NativeVideoPlayerController {
 
   /// Initialize the controller and wait for the platform view to be created
   Future<void> initialize() async {
-    if (_isInitialized) {
+    if (_state.isInitialized) {
       return;
     }
 
@@ -54,7 +49,7 @@ class NativeVideoPlayerController {
     // Wait for the platform view to be created
     await _initializeCompleter!.future;
 
-    _isInitialized = true;
+    _updateState(_state.copyWith(isInitialized: true));
   }
 
   /// Unique identifier for this video player instance
@@ -75,27 +70,14 @@ class NativeVideoPlayerController {
   /// Whether to show the native video player controls
   final bool showNativeControls;
 
-  /// Internal list of available video qualities (HLS variants)
-  List<NativeVideoPlayerQuality> _qualities = <NativeVideoPlayerQuality>[];
-
-  /// Available video qualities (HLS variants)
-  List<NativeVideoPlayerQuality> get qualities => _qualities;
-
-  /// Whether the video is currently in fullscreen mode
-  bool _isFullScreen = false;
-
-  /// Method channel for sending commands to native side (play, pause, seek, etc.)
-  /// Uses a shared channel name based on the controller ID
-  MethodChannel? _methodChannel;
-
-  /// Whether the controller has been initialized
-  bool _isInitialized = false;
-
-  /// Whether the controller has been loaded and is ready to use
-  bool _isLoaded = false;
+  /// Current state of the video player
+  NativeVideoPlayerState _state = const NativeVideoPlayerState();
 
   /// Video URL set when load() is called
   String? _url;
+
+  /// Method channel wrapper for platform communication
+  VideoPlayerMethodChannel? _methodChannel;
 
   /// Set of platform view IDs that are using this controller
   final Set<int> _platformViewIds = <int>{};
@@ -112,6 +94,11 @@ class NativeVideoPlayerController {
   /// Event handlers for video player events (supports multiple listeners)
   final List<void Function(NativeVideoPlayerEvent)> _eventHandlers = <void Function(NativeVideoPlayerEvent)>[];
 
+  /// Updates the internal state
+  void _updateState(NativeVideoPlayerState newState) {
+    _state = newState;
+  }
+
   /// Adds a listener for video player events
   void addListener(void Function(NativeVideoPlayerEvent) listener) {
     if (!_eventHandlers.contains(listener)) {
@@ -123,11 +110,32 @@ class NativeVideoPlayerController {
   void removeListener(void Function(NativeVideoPlayerEvent) listener) => _eventHandlers.remove(listener);
 
   /// Whether the controller is loaded and ready to accept commands
-  bool get isLoaded => _isLoaded;
+  bool get isLoaded => _state.isLoaded;
 
   /// Video URL to play (supports HLS .m3u8 and direct video URLs)
   /// Returns null if load() has not been called yet
   String? get url => _url;
+
+  /// Available video qualities (HLS variants)
+  List<NativeVideoPlayerQuality> get qualities => _state.qualities;
+
+  /// Returns whether the video is currently in fullscreen mode
+  bool get isFullScreen => _state.isFullScreen;
+
+  /// Returns the current playback position as a Duration
+  Duration get currentPosition => _state.currentPosition;
+
+  /// Returns the total video duration as a Duration
+  Duration get duration => _state.duration;
+
+  /// Returns the buffered position as a Duration (how far the video has been buffered)
+  Duration get bufferedPosition => _state.bufferedPosition;
+
+  /// Returns the current volume (0.0 to 1.0)
+  double get volume => _state.volume;
+
+  /// Current player state
+  NativeVideoPlayerState get state => _state;
 
   /// Parameters passed to native side when creating the platform view
   /// Includes controller ID, autoPlay, PiP settings, media info, and fullscreen state
@@ -137,7 +145,7 @@ class NativeVideoPlayerController {
     'allowsPictureInPicture': allowsPictureInPicture,
     'canStartPictureInPictureAutomatically': canStartPictureInPictureAutomatically,
     'showNativeControls': showNativeControls,
-    'isFullScreen': _isFullScreen,
+    'isFullScreen': _state.isFullScreen,
     if (mediaInfo != null) 'mediaInfo': mediaInfo!.toMap(),
   };
 
@@ -155,7 +163,7 @@ class NativeVideoPlayerController {
     // Set up method channel only once (for the first platform view)
     if (_primaryPlatformViewId == null) {
       _primaryPlatformViewId = platformViewId;
-      _methodChannel = const MethodChannel('native_video_player');
+      _methodChannel = VideoPlayerMethodChannel(primaryPlatformViewId: platformViewId);
     }
 
     // IMPORTANT: Set up event channel for EVERY platform view
@@ -169,15 +177,39 @@ class NativeVideoPlayerController {
         .listen(
           (NativeVideoPlayerEvent event) async {
             // Complete initialization when we receive the isInitialized event
-            if (!_isInitialized && event.type == NativeVideoPlayerEventType.isInitialized) {
+            if (!_state.isInitialized && event.type == NativeVideoPlayerEventType.isInitialized) {
               _initializeCompleter?.complete();
             }
 
             // Handle fullscreen change events from native
             if (event.type == NativeVideoPlayerEventType.fullscreenChange) {
               final bool isFullscreen = event.data?['isFullscreen'] as bool;
-              // Just update internal state, don't call native methods back
-              _isFullScreen = isFullscreen;
+              _updateState(_state.copyWith(isFullScreen: isFullscreen));
+            }
+
+            // Handle time update events from native
+            if (event.type == NativeVideoPlayerEventType.timeUpdate) {
+              if (event.data != null) {
+                final int position = (event.data!['position'] as num?)?.toInt() ?? 0;
+                final int duration = (event.data!['duration'] as num?)?.toInt() ?? 0;
+                final int bufferedPosition = (event.data!['bufferedPosition'] as num?)?.toInt() ?? 0;
+
+                _updateState(
+                  _state.copyWith(
+                    currentPosition: Duration(milliseconds: position),
+                    duration: Duration(milliseconds: duration),
+                    bufferedPosition: Duration(milliseconds: bufferedPosition),
+                  ),
+                );
+              }
+            }
+
+            // Handle videoLoaded events to get initial duration
+            if (event.type == NativeVideoPlayerEventType.videoLoaded) {
+              if (event.data != null) {
+                final int duration = (event.data!['duration'] as num?)?.toInt() ?? 0;
+                _updateState(_state.copyWith(duration: Duration(milliseconds: duration)));
+              }
             }
 
             // Notify all listeners
@@ -186,7 +218,7 @@ class NativeVideoPlayerController {
             }
           },
           onError: (dynamic error) {
-            if (!_isInitialized) {
+            if (!_state.isInitialized) {
               _initializeCompleter?.completeError(error);
             }
           },
@@ -214,8 +246,7 @@ class NativeVideoPlayerController {
       // If there are other views, we need to reinitialize with a new primary
       if (_platformViewIds.isNotEmpty) {
         // Mark as needing reinitialization for the next view
-        _isInitialized = false;
-        _isLoaded = false;
+        _updateState(_state.copyWith(isInitialized: false, isLoaded: false));
         _methodChannel = null;
       }
     }
@@ -234,42 +265,42 @@ class NativeVideoPlayerController {
   /// **Returns:**
   /// A Future that completes when the video is loaded
   Future<void> load({required String url, Map<String, String>? headers}) async {
-    if (_isLoaded) {
+    if (_state.isLoaded) {
       return;
     }
 
-    if (!_isInitialized) {
+    if (!_state.isInitialized) {
       throw Exception('Controller not initialized. Call initialize() first.');
     }
 
-    if (_methodChannel == null || _primaryPlatformViewId == null) {
+    if (_methodChannel == null) {
       throw Exception('Method channel not initialized. Platform view not created.');
     }
 
     _url = url;
 
     try {
-      // Load the video URL on the native side with autoPlay setting
-      final Map<String, Object> params = <String, Object>{
-        'url': url,
-        'autoPlay': autoPlay,
-        'viewId': _primaryPlatformViewId!,
-      };
-
-      if (headers != null) {
-        params['headers'] = headers;
-      }
-
-      if (mediaInfo != null) {
-        params['mediaInfo'] = mediaInfo!.toMap();
-      }
-
-      await _methodChannel!.invokeMethod<void>('load', params);
+      await _methodChannel!.load(url: url, autoPlay: autoPlay, headers: headers, mediaInfo: mediaInfo?.toMap());
 
       // Fetch available qualities after loading
-      await _fetchAvailableQualities();
+      final qualities = await _methodChannel!.getAvailableQualities();
 
-      _isLoaded = true;
+      _updateState(_state.copyWith(qualities: qualities, isLoaded: true));
+
+      // Notify listeners about available qualities
+      if (qualities.isNotEmpty) {
+        for (final handler in _eventHandlers) {
+          handler(
+            NativeVideoPlayerEvent(
+              type: NativeVideoPlayerEventType.qualityChange,
+              data: {
+                'qualities': qualities.map((q) => q.toMap()).toList(),
+                if (qualities.isNotEmpty) 'quality': qualities.first.toMap(),
+              },
+            ),
+          );
+        }
+      }
     } catch (e) {
       debugPrint('Error loading video: $e');
       rethrow;
@@ -278,133 +309,90 @@ class NativeVideoPlayerController {
 
   /// Starts or resumes video playback
   Future<void> play() async {
-    if (_methodChannel == null) {
-      return;
-    }
-    try {
-      await _methodChannel!.invokeMethod<void>('play');
-    } catch (e) {
-      debugPrint('Error calling play: $e');
-    }
+    await _methodChannel?.play();
   }
 
+  /// Pauses video playback
   Future<void> pause() async {
-    if (_methodChannel == null) {
-      return;
-    }
-    try {
-      await _methodChannel!.invokeMethod<void>('pause');
-    } catch (e) {
-      debugPrint('Error calling pause: $e');
-    }
+    await _methodChannel?.pause();
   }
 
+  /// Seeks to a specific position
   Future<void> seekTo(Duration position) async {
-    if (_methodChannel == null) {
-      return;
-    }
-    try {
-      await _methodChannel!.invokeMethod<void>('seekTo', position.inMilliseconds);
-    } catch (e) {
-      debugPrint('Error calling seekTo: $e');
-    }
+    await _methodChannel?.seekTo(position);
   }
 
+  /// Sets the volume
   Future<void> setVolume(double volume) async {
-    if (_methodChannel == null) {
-      return;
-    }
-    try {
-      await _methodChannel!.invokeMethod<void>('setVolume', volume);
-    } catch (e) {
-      debugPrint('Error calling setVolume: $e');
-    }
+    await _methodChannel?.setVolume(volume);
+    _updateState(_state.copyWith(volume: volume));
   }
 
+  /// Sets the playback speed
   Future<void> setSpeed(double speed) async {
-    if (_methodChannel == null) {
-      return;
-    }
-    try {
-      await _methodChannel!.invokeMethod<void>('setSpeed', speed);
-    } catch (e) {
-      debugPrint('Error calling setSpeed: $e');
-    }
+    await _methodChannel?.setSpeed(speed);
   }
 
+  /// Sets the video quality
   Future<void> setQuality(NativeVideoPlayerQuality quality) async {
-    if (_methodChannel == null) {
-      return;
-    }
-    try {
-      await _methodChannel!.invokeMethod<void>('setQuality', quality.toMap());
-    } catch (e) {
-      debugPrint('Error calling setQuality: $e');
-    }
+    await _methodChannel?.setQuality(quality);
   }
 
-  Future<void> _fetchAvailableQualities() async {
+  /// Returns whether Picture-in-Picture is available on this device
+  /// Checks the actual device capabilities rather than just the platform
+  /// PiP is available on iOS 14+ and Android 8+ (if the device supports it)
+  Future<bool> isPictureInPictureAvailable() async {
     if (_methodChannel == null) {
-      return;
+      return false;
     }
-    try {
-      final dynamic result = await _methodChannel!.invokeMethod<dynamic>('getAvailableQualities');
-      if (result is List) {
-        _qualities = result.map((dynamic e) => NativeVideoPlayerQuality.fromMap(e as Map<dynamic, dynamic>)).toList();
-      }
-    } catch (e) {
-      debugPrint('Error fetching qualities: $e');
-    }
+    return await _methodChannel!.isPictureInPictureAvailable();
   }
 
-  /// Returns whether the video is currently in fullscreen mode
-  bool get isFullScreen => _isFullScreen;
+  /// Enters Picture-in-Picture mode
+  /// Only works on iOS 14+ and Android 8+
+  Future<bool> enterPictureInPicture() async {
+    if (_methodChannel == null) {
+      return false;
+    }
+    return await _methodChannel!.enterPictureInPicture();
+  }
+
+  /// Exits Picture-in-Picture mode
+  /// Only works on iOS 14+ and Android 8+
+  Future<bool> exitPictureInPicture() async {
+    if (_methodChannel == null) {
+      return false;
+    }
+    return await _methodChannel!.exitPictureInPicture();
+  }
 
   /// Enters fullscreen mode
   /// Triggers native fullscreen on both Android and iOS
   Future<void> enterFullScreen() async {
-    if (_isFullScreen) {
+    if (_state.isFullScreen) {
       return;
     }
 
-    _isFullScreen = true;
+    _updateState(_state.copyWith(isFullScreen: true));
 
-    // Call native method to enter fullscreen
-    if (_methodChannel != null && _primaryPlatformViewId != null) {
-      try {
-        await _methodChannel!.invokeMethod<void>('enterFullScreen', <String, Object>{
-          'viewId': _primaryPlatformViewId!,
-        });
-      } catch (e) {
-        debugPrint('Error calling enterFullScreen: $e');
-      }
-    }
+    await _methodChannel?.enterFullScreen();
   }
 
   /// Exits fullscreen mode
   /// Triggers native fullscreen exit on both Android and iOS
   Future<void> exitFullScreen() async {
-    if (!_isFullScreen) {
+    if (!_state.isFullScreen) {
       return;
     }
 
-    _isFullScreen = false;
+    _updateState(_state.copyWith(isFullScreen: false));
 
-    // Call native method to exit fullscreen
-    if (_methodChannel != null && _primaryPlatformViewId != null) {
-      try {
-        await _methodChannel!.invokeMethod<void>('exitFullScreen', <String, Object>{
-          'viewId': _primaryPlatformViewId!,
-        });
-      } catch (e) {
-        debugPrint('Error calling exitFullScreen: $e');
-      }
-    }
+    await _methodChannel?.exitFullScreen();
   }
 
   /// Toggles fullscreen mode
   Future<void> toggleFullScreen() async {
-    if (_isFullScreen) {
+    if (_state.isFullScreen) {
       await exitFullScreen();
     } else {
       await enterFullScreen();
@@ -417,7 +405,7 @@ class NativeVideoPlayerController {
   /// The native player is automatically disposed when the platform view is destroyed.
   Future<void> dispose() async {
     // Exit fullscreen if active
-    if (_isFullScreen) {
+    if (_state.isFullScreen) {
       await exitFullScreen();
     }
 
@@ -428,8 +416,7 @@ class NativeVideoPlayerController {
     _eventSubscriptions.clear();
 
     _methodChannel = null;
-    _isInitialized = false;
-    _isLoaded = false;
+    _updateState(const NativeVideoPlayerState());
     _url = null;
     _platformViewIds.clear();
     _primaryPlatformViewId = null;

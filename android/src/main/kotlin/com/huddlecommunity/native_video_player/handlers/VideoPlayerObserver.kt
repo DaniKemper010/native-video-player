@@ -1,5 +1,7 @@
 package com.huddlecommunity.native_video_player.handlers
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -9,11 +11,46 @@ import androidx.media3.common.Player
  * Equivalent to iOS VideoPlayerObserver
  */
 class VideoPlayerObserver(
+    private val player: Player,
     private val eventHandler: VideoPlayerEventHandler
 ) : Player.Listener {
 
     companion object {
         private const val TAG = "VideoPlayerObserver"
+        private const val UPDATE_INTERVAL_MS = 500L // Update every 500ms
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val timeUpdateRunnable = object : Runnable {
+        override fun run() {
+            // Send time update event
+            val position = player.currentPosition.toInt() // milliseconds
+            val duration = player.duration.toInt() // milliseconds
+
+            // Get buffered position
+            val bufferedPosition = player.bufferedPosition.toInt() // milliseconds
+
+            if (duration > 0) {
+                eventHandler.sendEvent("timeUpdate", mapOf(
+                    "position" to position,
+                    "duration" to duration,
+                    "bufferedPosition" to bufferedPosition
+                ))
+            }
+
+            // Schedule next update
+            handler.postDelayed(this, UPDATE_INTERVAL_MS)
+        }
+    }
+
+    init {
+        // Start periodic time updates
+        handler.post(timeUpdateRunnable)
+    }
+
+    fun release() {
+        // Stop periodic updates
+        handler.removeCallbacks(timeUpdateRunnable)
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
@@ -27,6 +64,11 @@ class VideoPlayerObserver(
             }
             Player.STATE_READY -> {
                 eventHandler.sendEvent("loading")
+                // Send initial duration when player is ready
+                val duration = player.duration.toInt()
+                if (duration > 0) {
+                    eventHandler.sendEvent("videoLoaded", mapOf("duration" to duration))
+                }
             }
             Player.STATE_ENDED -> {
                 eventHandler.sendEvent("completed")

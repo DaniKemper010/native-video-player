@@ -29,7 +29,10 @@ class VideoPlayerMethodHandler(
         private const val TAG = "VideoPlayerMethod"
     }
 
-    private var availableQualities: List<Map<String, String>> = emptyList()
+    private var availableQualities: List<Map<String, Any>> = emptyList()
+    private var isAutoQuality = false
+    private var lastBitrateCheck = 0L
+    private val bitrateCheckInterval = 5000L // 5 seconds
 
     // Callback to handle fullscreen requests from Flutter
     var onFullscreenRequest: ((Boolean) -> Unit)? = null
@@ -168,7 +171,8 @@ class VideoPlayerMethodHandler(
      * Seeks to a specific position
      */
     private fun handleSeekTo(call: MethodCall, result: MethodChannel.Result) {
-        val milliseconds = call.arguments as? Int
+        val args = call.arguments as? Map<*, *>
+        val milliseconds = args?.get("milliseconds") as? Int
         if (milliseconds != null) {
             player.seekTo(milliseconds.toLong())
             eventHandler.sendEvent("seek", mapOf("position" to milliseconds))
@@ -180,7 +184,8 @@ class VideoPlayerMethodHandler(
      * Sets playback volume
      */
     private fun handleSetVolume(call: MethodCall, result: MethodChannel.Result) {
-        val volume = call.arguments as? Double
+        val args = call.arguments as? Map<*, *>
+        val volume = args?.get("volume") as? Double
         if (volume != null) {
             player.volume = volume.toFloat()
         }
@@ -191,7 +196,8 @@ class VideoPlayerMethodHandler(
      * Sets playback speed
      */
     private fun handleSetSpeed(call: MethodCall, result: MethodChannel.Result) {
-        val speed = call.arguments as? Double
+        val args = call.arguments as? Map<*, *>
+        val speed = args?.get("speed") as? Double
         if (speed != null) {
             player.setPlaybackSpeed(speed.toFloat())
             eventHandler.sendEvent("speedChange", mapOf("speed" to speed))
@@ -203,18 +209,85 @@ class VideoPlayerMethodHandler(
      * Changes video quality (for HLS streams)
      */
     private fun handleSetQuality(call: MethodCall, result: MethodChannel.Result) {
-        val qualityInfo = call.arguments as? Map<*, *>
-        val url = qualityInfo?.get("url") as? String
-        val label = qualityInfo?.get("label") as? String
-
-        if (url == null) {
-            result.error("INVALID_QUALITY", "Quality URL is required", null)
+        val args = call.arguments as? Map<*, *>
+        val qualityInfo = args?.get("quality") as? Map<*, *>
+        
+        if (qualityInfo == null) {
+            result.error("INVALID_QUALITY", "Invalid quality data", null)
             return
         }
 
+        val isAuto = qualityInfo["isAuto"] as? Boolean ?: false
+        isAutoQuality = isAuto
+
+        if (isAuto) {
+            // Start with the middle quality for auto mode
+            val midIndex = (availableQualities.size / 2 - 1).coerceAtLeast(0)
+            if (midIndex >= availableQualities.size) {
+                result.error("NO_QUALITIES", "No qualities available", null)
+                return
+            }
+
+            val initialQuality = availableQualities[midIndex]
+            switchToQuality(initialQuality, result)
+
+            // Start monitoring quality
+            startQualityMonitoring()
+        } else {
+            val url = qualityInfo["url"] as? String
+            val label = qualityInfo["label"] as? String
+
+            if (url == null) {
+                result.error("INVALID_QUALITY", "Quality URL is required", null)
+                return
+            }
+
+            eventHandler.sendEvent("loading")
+
+            // Save current state
+            val wasPlaying = player.isPlaying
+            val currentPosition = player.currentPosition
+
+            // Build new media source
+            val dataSourceFactory = DefaultHttpDataSource.Factory()
+            val mediaItem = MediaItem.fromUri(url)
+            val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(mediaItem)
+
+            // Switch to new quality
+            player.setMediaSource(mediaSource)
+            player.prepare()
+            player.seekTo(currentPosition)
+            
+            // Only resume playback if it was playing before
+            if (wasPlaying) {
+                player.play()
+            }
+
+            eventHandler.sendEvent("qualityChange", mapOf(
+                "url" to url,
+                "label" to (label ?: ""),
+                "isAuto" to false
+            ))
+
+            result.success(null)
+        }
+    }
+
+    private fun startQualityMonitoring() {
+        // Quality monitoring is simplified for now
+        // In a production app, you would implement bandwidth monitoring here
+        Log.d(TAG, "Auto quality monitoring enabled (simplified implementation)")
+    }
+
+    private fun switchToQuality(quality: Map<String, Any>, result: MethodChannel.Result?) {
+        val url = quality["url"] as? String ?: return
+        val label = quality["label"] as? String ?: "Unknown"
+
         eventHandler.sendEvent("loading")
 
-        // Save current position
+        // Save current state
+        val wasPlaying = player.isPlaying
         val currentPosition = player.currentPosition
 
         // Build new media source
@@ -227,10 +300,19 @@ class VideoPlayerMethodHandler(
         player.setMediaSource(mediaSource)
         player.prepare()
         player.seekTo(currentPosition)
-        player.play()
 
-        eventHandler.sendEvent("qualityChange", mapOf("url" to url, "label" to (label ?: "")))
-        result.success(null)
+        // Only resume playback if it was playing before
+        if (wasPlaying) {
+            player.play()
+        }
+
+        eventHandler.sendEvent("qualityChange", mapOf(
+            "url" to url,
+            "label" to label,
+            "isAuto" to isAutoQuality
+        ))
+
+        result?.success(null)
     }
 
     /**

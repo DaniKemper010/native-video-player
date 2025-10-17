@@ -1,5 +1,10 @@
 class NativeVideoPlayerMediaInfo {
-  const NativeVideoPlayerMediaInfo({this.title, this.subtitle, this.album, this.artworkUrl});
+  const NativeVideoPlayerMediaInfo({
+    this.title,
+    this.subtitle,
+    this.album,
+    this.artworkUrl,
+  });
 
   final String? title;
   final String? subtitle;

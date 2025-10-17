@@ -17,8 +17,6 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
-import com.huddlecommunity.huddle.MainActivity
-import com.huddlecommunity.huddle.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -168,9 +166,10 @@ class VideoPlayerNotificationHandler(
         }
 
         // Create pending intent to launch app when notification is clicked
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val packageManager = context.packageManager
+        val intent = packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
+        } ?: Intent()
         val pendingIntent = PendingIntent.getActivity(
             context,
             0,
@@ -240,9 +239,10 @@ class VideoPlayerNotificationHandler(
         val artist = mediaMetadata?.artist?.toString() ?: currentSubtitle
 
         // Create pending intent for the notification
-        val intent = Intent(context, MainActivity::class.java).apply {
+        val packageManager = context.packageManager
+        val intent = packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
+        } ?: Intent()
         val contentIntent = PendingIntent.getActivity(
             context,
             0,
@@ -252,10 +252,14 @@ class VideoPlayerNotificationHandler(
 
         Log.d(TAG, "Building notification - title: $title, subtitle: $artist (from player: ${mediaMetadata != null})")
 
+        // Get notification icon from the app's resources
+        val appInfo = context.applicationInfo
+        val iconResId = appInfo.icon
+
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(artist)
-            .setSmallIcon(R.drawable.ic_notification_statusbar)
+            .setSmallIcon(iconResId)
             .setLargeIcon(currentArtwork)
             .setContentIntent(contentIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

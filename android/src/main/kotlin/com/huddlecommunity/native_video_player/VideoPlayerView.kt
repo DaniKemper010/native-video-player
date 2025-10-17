@@ -19,11 +19,11 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import com.huddlecommunity.huddle.videoplayer.handlers.VideoPlayerEventHandler
-import com.huddlecommunity.huddle.videoplayer.handlers.VideoPlayerMethodHandler
-import com.huddlecommunity.huddle.videoplayer.handlers.VideoPlayerNotificationHandler
-import com.huddlecommunity.huddle.videoplayer.handlers.VideoPlayerObserver
-import com.huddlecommunity.huddle.videoplayer.manager.SharedPlayerManager
+import com.huddlecommunity.native_video_player.handlers.VideoPlayerEventHandler
+import com.huddlecommunity.native_video_player.handlers.VideoPlayerMethodHandler
+import com.huddlecommunity.native_video_player.handlers.VideoPlayerNotificationHandler
+import com.huddlecommunity.native_video_player.handlers.VideoPlayerObserver
+import com.huddlecommunity.native_video_player.manager.SharedPlayerManager
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -155,7 +155,7 @@ class VideoPlayerView(
         }
 
         // Setup observer
-        observer = VideoPlayerObserver(eventHandler)
+        observer = VideoPlayerObserver(player, eventHandler)
         player.addListener(observer)
 
         // Setup method channel
@@ -185,12 +185,33 @@ class VideoPlayerView(
      */
     fun handleMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "isPictureInPictureAvailable" -> {
+                checkPictureInPictureAvailability(result)
+            }
             "enterPictureInPicture" -> {
                 enterPictureInPicture(result)
             }
             else -> {
                 methodHandler.handleMethodCall(call, result)
             }
+        }
+    }
+
+    /**
+     * Checks if Picture-in-Picture is available on this device
+     */
+    private fun checkPictureInPictureAvailability(result: MethodChannel.Result) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val activity = getActivity(context)
+            if (activity != null) {
+                val packageManager = activity.packageManager
+                val hasPipFeature = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+                result.success(hasPipFeature)
+            } else {
+                result.success(false)
+            }
+        } else {
+            result.success(false)
         }
     }
 
@@ -277,8 +298,8 @@ class VideoPlayerView(
             }
         }
 
-        // Remove player view from container
-        containerView.removeView(playerView)
+        // Remove player view from container (important: remove from parent first!)
+        (playerView.parent as? ViewGroup)?.removeView(playerView)
 
         // Create fullscreen dialog with black background and no title bar
         fullscreenDialog = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen).apply {
@@ -456,8 +477,9 @@ class VideoPlayerView(
         // Remove fullscreen button listener to prevent clicks during disposal
         playerView.setFullscreenButtonClickListener(null)
 
-        // Remove listeners
+        // Remove listeners and stop periodic updates
         player.removeListener(observer)
+        observer.release()
 
         // Clean up channels
         methodChannel.setMethodCallHandler(null)

@@ -3,9 +3,9 @@ package com.huddlecommunity.native_video_player.manager
 import android.content.Context
 import android.content.Intent
 import androidx.media3.exoplayer.ExoPlayer
-import com.huddlecommunity.huddle.videoplayer.VideoPlayerMediaSessionService
-import com.huddlecommunity.huddle.videoplayer.handlers.VideoPlayerNotificationHandler
-import com.huddlecommunity.huddle.videoplayer.handlers.VideoPlayerEventHandler
+import com.huddlecommunity.native_video_player.VideoPlayerMediaSessionService
+import com.huddlecommunity.native_video_player.handlers.VideoPlayerNotificationHandler
+import com.huddlecommunity.native_video_player.handlers.VideoPlayerEventHandler
 
 /**
  * Manages shared ExoPlayer instances and NotificationHandlers across multiple platform views

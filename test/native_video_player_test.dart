@@ -22,41 +22,44 @@ void main() {
       ),
     );
 
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(methodChannel, (
-      MethodCall methodCall,
-    ) async {
-      switch (methodCall.method) {
-        case 'load':
-          return null;
-        case 'play':
-          return null;
-        case 'pause':
-          return null;
-        case 'seekTo':
-          return null;
-        case 'setVolume':
-          return null;
-        case 'setSpeed':
-          return null;
-        case 'setQuality':
-          return null;
-        case 'getAvailableQualities':
-          return [
-            {'label': '1080p', 'url': 'https://example.com/video_1080p.m3u8'},
-            {'label': '720p', 'url': 'https://example.com/video_720p.m3u8'},
-          ];
-        case 'enterFullScreen':
-          return null;
-        case 'exitFullScreen':
-          return null;
-        default:
-          return null;
-      }
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, (MethodCall methodCall) async {
+          switch (methodCall.method) {
+            case 'load':
+              return null;
+            case 'play':
+              return null;
+            case 'pause':
+              return null;
+            case 'seekTo':
+              return null;
+            case 'setVolume':
+              return null;
+            case 'setSpeed':
+              return null;
+            case 'setQuality':
+              return null;
+            case 'getAvailableQualities':
+              return [
+                {
+                  'label': '1080p',
+                  'url': 'https://example.com/video_1080p.m3u8',
+                },
+                {'label': '720p', 'url': 'https://example.com/video_720p.m3u8'},
+              ];
+            case 'enterFullScreen':
+              return null;
+            case 'exitFullScreen':
+              return null;
+            default:
+              return null;
+          }
+        });
   });
 
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(methodChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, null);
     controller.dispose();
   });
 
@@ -84,12 +87,18 @@ void main() {
     });
 
     test('should throw if load() is called before initialize()', () async {
-      expect(() => controller.load(url: 'https://example.com/video.m3u8'), throwsException);
+      expect(
+        () => controller.load(url: 'https://example.com/video.m3u8'),
+        throwsException,
+      );
     });
 
     test('should load with headers', () async {
       await controller.initialize();
-      await controller.load(url: 'https://example.com/video.m3u8', headers: {'Referer': 'https://example.com'});
+      await controller.load(
+        url: 'https://example.com/video.m3u8',
+        headers: {'Referer': 'https://example.com'},
+      );
       expect(controller.isLoaded, isTrue);
     });
   });
@@ -184,14 +193,21 @@ void main() {
 
     test('should handle player events', () async {
       // Simulate event from native side
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
-        'native_video_player_1',
-        const StandardMethodCodec().encodeSuccessEnvelope({'event': 'play', 'position': 0}),
-        (ByteData? data) {},
-      );
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .handlePlatformMessage(
+            'native_video_player_1',
+            const StandardMethodCodec().encodeSuccessEnvelope({
+              'event': 'play',
+              'position': 0,
+            }),
+            (ByteData? data) {},
+          );
 
       expect(receivedEvents.length, equals(1));
-      expect(receivedEvents.first.type, equals(NativeVideoPlayerEventType.play));
+      expect(
+        receivedEvents.first.type,
+        equals(NativeVideoPlayerEventType.play),
+      );
     });
   });
 }

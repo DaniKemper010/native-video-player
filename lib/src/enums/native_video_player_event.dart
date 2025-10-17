@@ -14,11 +14,13 @@ enum NativeVideoPlayerEventType {
   pipStop,
   stopped,
   fullscreenChange,
+  timeUpdate,
 }
 
 extension NativeVideoPlayerEventTypeExtension on NativeVideoPlayerEventType {
   bool get isInitialized =>
-      this == NativeVideoPlayerEventType.isInitialized && this != NativeVideoPlayerEventType.error;
+      this == NativeVideoPlayerEventType.isInitialized &&
+      this != NativeVideoPlayerEventType.error;
 
   bool get isLoading => this == NativeVideoPlayerEventType.loading;
 
@@ -34,7 +36,8 @@ extension NativeVideoPlayerEventTypeExtension on NativeVideoPlayerEventType {
 
   bool get isCompleted => this == NativeVideoPlayerEventType.completed;
 
-  bool get isFullscreenChange => this == NativeVideoPlayerEventType.fullscreenChange;
+  bool get isFullscreenChange =>
+      this == NativeVideoPlayerEventType.fullscreenChange;
 }
 
 class NativeVideoPlayerEvent {
@@ -44,7 +47,8 @@ class NativeVideoPlayerEvent {
     final String eventName = map['event'] as String;
     final NativeVideoPlayerEventType type = _eventTypeFromString(eventName);
 
-    final Map<String, dynamic> data = Map<String, dynamic>.from(map)..remove('event');
+    final Map<String, dynamic> data = Map<String, dynamic>.from(map)
+      ..remove('event');
 
     return NativeVideoPlayerEvent(type: type, data: data.isEmpty ? null : data);
   }
@@ -84,6 +88,8 @@ class NativeVideoPlayerEvent {
         return NativeVideoPlayerEventType.stopped;
       case 'fullscreenChange':
         return NativeVideoPlayerEventType.fullscreenChange;
+      case 'timeUpdate':
+        return NativeVideoPlayerEventType.timeUpdate;
       default:
         return NativeVideoPlayerEventType.error;
     }

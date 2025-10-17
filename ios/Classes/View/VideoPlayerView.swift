@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import AVKit
 import AVFoundation
+import QuartzCore
 
 // MARK: - Main Video Player View
 
@@ -11,8 +12,16 @@ import AVFoundation
     private var methodChannel: FlutterMethodChannel
     private var channelName: String
     var eventSink: FlutterEventSink?
-    var availableQualities: [[String: String]] = []
+    var availableQualities: [[String: Any]] = []
+    var qualityLevels: [VideoPlayer.QualityLevel] = []
+    var isAutoQuality = false
+    var lastBitrateCheck: TimeInterval = 0
+    let bitrateCheckInterval: TimeInterval = 5.0 // Check every 5 seconds
     var controllerId: Int?
+    var pipController: AVPictureInPictureController?
+
+    // Separate player view controller for fullscreen (prevents removing embedded view)
+    var fullscreenPlayerViewController: AVPlayerViewController?
 
     // Store media info for Now Playing
     var currentMediaInfo: [String: Any]?
@@ -127,6 +136,10 @@ import AVFoundation
             handleEnterFullScreen(result: result)
         case "exitFullScreen":
             handleExitFullScreen(result: result)
+        case "isPictureInPictureAvailable":
+            handleIsPictureInPictureAvailable(result: result)
+        case "enterPictureInPicture":
+            handleEnterPictureInPicture(result: result)
         case "dispose":
             handleDispose(result: result)
         default:

@@ -39,15 +39,15 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
   /// Listens to controller events
   StreamSubscription<dynamic>? _listenToControllerEvents() {
     // Create a stream controller to bridge the callback-based listener
-    _eventStreamController = StreamController<NativeVideoPlayerEvent>.broadcast();
+    _eventStreamController =
+        StreamController<NativeVideoPlayerEvent>.broadcast();
 
     // Subscribe to the stream FIRST, before adding the controller listener
     // This ensures we don't miss any events
-    final StreamSubscription<NativeVideoPlayerEvent> subscription = _eventStreamController!.stream.listen((
-      NativeVideoPlayerEvent event,
-    ) {
-      // Handle events if needed
-    });
+    final StreamSubscription<NativeVideoPlayerEvent> subscription =
+        _eventStreamController!.stream.listen((NativeVideoPlayerEvent event) {
+          // Handle events if needed
+        });
 
     // Now add listener to native video player controller
     widget.controller.addListener(_handleControllerEvent);
@@ -111,7 +111,10 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
       );
     }
 
-    return const Text('Only iOS and Android are supported', textAlign: TextAlign.center);
+    return const Text(
+      'Only iOS and Android are supported',
+      textAlign: TextAlign.center,
+    );
   }
 
   @override
