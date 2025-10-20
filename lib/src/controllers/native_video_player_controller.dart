@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -93,6 +92,9 @@ class NativeVideoPlayerController {
 
   /// MainActivity PiP event channel subscription (Android only)
   StreamSubscription<dynamic>? _pipEventSubscription;
+
+  /// MainActivity PiP event channel subscription (Android only)
+  StreamSubscription<dynamic>? get pipEventSubscription => _pipEventSubscription;
 
   /// Whether the MainActivity PiP event listener has been set up
   static bool _pipEventListenerSetup = false;
@@ -191,89 +193,85 @@ class NativeVideoPlayerController {
     final EventChannel eventChannel = EventChannel('native_video_player_$platformViewId');
 
     // Set up event stream and store the subscription for later cleanup
-    _eventSubscriptions[platformViewId] = eventChannel
-        .receiveBroadcastStream()
-        .listen(
-          (dynamic eventMap) async {
-            final map = eventMap as Map<dynamic, dynamic>;
-            final String eventName = map['event'] as String;
+    _eventSubscriptions[platformViewId] = eventChannel.receiveBroadcastStream().listen(
+      (dynamic eventMap) async {
+        final map = eventMap as Map<dynamic, dynamic>;
+        final String eventName = map['event'] as String;
 
-            // Determine if this is an activity event or control event
-            final isActivityEvent = _isActivityEvent(eventName);
+        // Determine if this is an activity event or control event
+        final isActivityEvent = _isActivityEvent(eventName);
 
-            if (isActivityEvent) {
-              final activityEvent = PlayerActivityEvent.fromMap(map);
+        if (isActivityEvent) {
+          final activityEvent = PlayerActivityEvent.fromMap(map);
 
-              // Complete initialization when we receive the isInitialized event
-              if (!_state.activityState.isInitialized &&
-                  activityEvent.state == PlayerActivityState.initialized &&
-                  _initializeCompleter != null &&
-                  !_initializeCompleter!.isCompleted) {
-                _initializeCompleter!.complete();
-              }
+          // Complete initialization when we receive the isInitialized event
+          if (!_state.activityState.isInitialized &&
+              activityEvent.state == PlayerActivityState.initialized &&
+              _initializeCompleter != null &&
+              !_initializeCompleter!.isCompleted) {
+            _initializeCompleter!.complete();
+          }
 
-              // Update activity state
-              _updateState(_state.copyWith(activityState: activityEvent.state));
+          // Update activity state
+          _updateState(_state.copyWith(activityState: activityEvent.state));
 
-              // Handle videoLoaded events to get initial duration
-              if (activityEvent.state == PlayerActivityState.loaded) {
-                if (activityEvent.data != null) {
-                  final int duration = (activityEvent.data!['duration'] as num?)?.toInt() ?? 0;
-                  _updateState(_state.copyWith(duration: Duration(milliseconds: duration)));
-                }
-              }
+          // Handle videoLoaded events to get initial duration
+          if (activityEvent.state == PlayerActivityState.loaded) {
+            if (activityEvent.data != null) {
+              final int duration = (activityEvent.data!['duration'] as num?)?.toInt() ?? 0;
+              _updateState(_state.copyWith(duration: Duration(milliseconds: duration)));
+            }
+          }
 
-              // Notify activity listeners
-              for (final handler in _activityEventHandlers) {
-                handler(activityEvent);
-              }
-            } else {
-              final controlEvent = PlayerControlEvent.fromMap(map);
+          // Notify activity listeners
+          for (final handler in _activityEventHandlers) {
+            handler(activityEvent);
+          }
+        } else {
+          final controlEvent = PlayerControlEvent.fromMap(map);
 
-              // Handle fullscreen change events
-              if (controlEvent.state == PlayerControlState.fullscreenEntered ||
-                  controlEvent.state == PlayerControlState.fullscreenExited) {
-                final bool isFullscreen = controlEvent.data?['isFullscreen'] as bool? ??
-                                          controlEvent.state == PlayerControlState.fullscreenEntered;
-                _updateState(_state.copyWith(
-                  isFullScreen: isFullscreen,
+          // Handle fullscreen change events
+          if (controlEvent.state == PlayerControlState.fullscreenEntered ||
+              controlEvent.state == PlayerControlState.fullscreenExited) {
+            final bool isFullscreen =
+                controlEvent.data?['isFullscreen'] as bool? ??
+                controlEvent.state == PlayerControlState.fullscreenEntered;
+            _updateState(_state.copyWith(isFullScreen: isFullscreen, controlState: controlEvent.state));
+          }
+
+          // Handle time update events
+          if (controlEvent.state == PlayerControlState.timeUpdated) {
+            if (controlEvent.data != null) {
+              final int position = (controlEvent.data!['position'] as num?)?.toInt() ?? 0;
+              final int duration = (controlEvent.data!['duration'] as num?)?.toInt() ?? 0;
+              final int bufferedPosition = (controlEvent.data!['bufferedPosition'] as num?)?.toInt() ?? 0;
+
+              _updateState(
+                _state.copyWith(
+                  currentPosition: Duration(milliseconds: position),
+                  duration: Duration(milliseconds: duration),
+                  bufferedPosition: Duration(milliseconds: bufferedPosition),
                   controlState: controlEvent.state,
-                ));
-              }
-
-              // Handle time update events
-              if (controlEvent.state == PlayerControlState.timeUpdated) {
-                if (controlEvent.data != null) {
-                  final int position = (controlEvent.data!['position'] as num?)?.toInt() ?? 0;
-                  final int duration = (controlEvent.data!['duration'] as num?)?.toInt() ?? 0;
-                  final int bufferedPosition = (controlEvent.data!['bufferedPosition'] as num?)?.toInt() ?? 0;
-
-                  _updateState(_state.copyWith(
-                    currentPosition: Duration(milliseconds: position),
-                    duration: Duration(milliseconds: duration),
-                    bufferedPosition: Duration(milliseconds: bufferedPosition),
-                    controlState: controlEvent.state,
-                  ));
-                }
-              } else {
-                // Update control state for other control events
-                _updateState(_state.copyWith(controlState: controlEvent.state));
-              }
-
-              // Notify control listeners
-              for (final handler in _controlEventHandlers) {
-                handler(controlEvent);
-              }
+                ),
+              );
             }
-          },
-          onError: (dynamic error) {
-            if (!_state.activityState.isInitialized &&
-                _initializeCompleter != null &&
-                !_initializeCompleter!.isCompleted) {
-              _initializeCompleter!.completeError(error);
-            }
-          },
-        );
+          } else {
+            // Update control state for other control events
+            _updateState(_state.copyWith(controlState: controlEvent.state));
+          }
+
+          // Notify control listeners
+          for (final handler in _controlEventHandlers) {
+            handler(controlEvent);
+          }
+        }
+      },
+      onError: (dynamic error) {
+        if (!_state.activityState.isInitialized && _initializeCompleter != null && !_initializeCompleter!.isCompleted) {
+          _initializeCompleter!.completeError(error);
+        }
+      },
+    );
 
     // Set up MainActivity PiP event listener (Android only, once per app)
     _setupMainActivityPipListener();
@@ -309,10 +307,7 @@ class NativeVideoPlayerController {
 
           final controlEvent = PlayerControlEvent(
             state: state,
-            data: <String, dynamic>{
-              'isPictureInPicture': isInPipMode,
-              'fromMainActivity': true,
-            },
+            data: <String, dynamic>{'isPictureInPicture': isInPipMode, 'fromMainActivity': true},
           );
 
           // Update controller state

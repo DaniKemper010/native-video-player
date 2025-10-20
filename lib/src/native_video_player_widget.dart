@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'controllers/native_video_player_controller.dart';
-import 'enums/native_video_player_event.dart';
 
 /// A native video player widget that wraps platform-specific video players
 /// (AVPlayerViewController on iOS, ExoPlayer on Android).
