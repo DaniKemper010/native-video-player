@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.EventChannel
+import com.huddlecommunity.better_native_video_player.VideoPlayerView
 
 class MainActivity : FlutterActivity() {
     private val TAG = "MainActivity"
@@ -42,8 +43,8 @@ class MainActivity : FlutterActivity() {
         // Restore ExoPlayer controls when exiting PiP
         if (!isInPictureInPictureMode) {
             try {
-                val allViews = com.huddlecommunity.native_video_player.NativeVideoPlayerPlugin.getAllViews()
-                allViews.forEach { view ->
+                val allViews = com.huddlecommunity.better_native_video_player.NativeVideoPlayerPlugin.getAllViews()
+                allViews.forEach { view: VideoPlayerView ->
                     view.onExitPictureInPicture()
                 }
                 Log.d(TAG, "Restored controls for ${allViews.size} video players")
@@ -70,7 +71,7 @@ class MainActivity : FlutterActivity() {
         // Uncomment below to enable automatic PiP when home button is pressed:
         /*
         try {
-            val allViews = com.huddlecommunity.native_video_player.NativeVideoPlayerPlugin.getAllViews()
+            val allViews = com.huddlecommunity.better_native_video_player.NativeVideoPlayerPlugin.getAllViews()
             Log.d(TAG, "Found ${allViews.size} registered video players")
 
             for (view in allViews) {

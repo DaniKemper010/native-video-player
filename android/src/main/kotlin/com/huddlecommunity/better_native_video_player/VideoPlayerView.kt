@@ -19,11 +19,11 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import com.huddlecommunity.native_video_player.handlers.VideoPlayerEventHandler
-import com.huddlecommunity.native_video_player.handlers.VideoPlayerMethodHandler
-import com.huddlecommunity.native_video_player.handlers.VideoPlayerNotificationHandler
-import com.huddlecommunity.native_video_player.handlers.VideoPlayerObserver
-import com.huddlecommunity.native_video_player.manager.SharedPlayerManager
+import com.huddlecommunity.better_native_video_player.handlers.VideoPlayerEventHandler
+import com.huddlecommunity.better_native_video_player.handlers.VideoPlayerMethodHandler
+import com.huddlecommunity.better_native_video_player.handlers.VideoPlayerNotificationHandler
+import com.huddlecommunity.better_native_video_player.handlers.VideoPlayerObserver
+import com.huddlecommunity.better_native_video_player.manager.SharedPlayerManager
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
