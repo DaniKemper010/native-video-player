@@ -67,7 +67,7 @@ class VideoPlayerObserver(
                 // Send initial duration when player is ready
                 val duration = player.duration.toInt()
                 if (duration > 0) {
-                    eventHandler.sendEvent("videoLoaded", mapOf("duration" to duration))
+                    eventHandler.sendEvent("loaded", mapOf("duration" to duration))
                 }
             }
             Player.STATE_ENDED -> {

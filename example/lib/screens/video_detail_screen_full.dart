@@ -206,6 +206,32 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
     return '${twoDigits(minutes)}:${twoDigits(seconds)}';
   }
 
+  Widget _buildPlayPauseButton() {
+    // Show loading indicator when buffering or loading
+    if (state == PlayerActivityState.buffering || state == PlayerActivityState.loading) {
+      return const Center(
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: CircularProgressIndicator(strokeWidth: 3, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+        ),
+      );
+    }
+
+    // Show play/pause button for other states
+    return IconButton(
+      icon: Icon(state.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+      iconSize: 36,
+      onPressed: () {
+        if (state.isPlaying) {
+          _controller.pause();
+        } else {
+          _controller.play();
+        }
+      },
+    );
+  }
+
   @override
   void dispose() {
     _controller.removeActivityListener(_handleActivityEvent);
@@ -310,17 +336,7 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
                                       color: Theme.of(context).primaryColor,
                                       shape: BoxShape.circle,
                                     ),
-                                    child: IconButton(
-                                      icon: Icon(state.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                                      iconSize: 36,
-                                      onPressed: () {
-                                        if (state.isPlaying) {
-                                          _controller.pause();
-                                        } else {
-                                          _controller.play();
-                                        }
-                                      },
-                                    ),
+                                    child: _buildPlayPauseButton(),
                                   ),
                                   const SizedBox(width: 20),
                                   IconButton(

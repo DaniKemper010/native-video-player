@@ -60,7 +60,6 @@ class VideoPlayerView(
     private val observer: VideoPlayerObserver
 
     // Channels
-    private val methodChannel: MethodChannel
     private val eventChannel: EventChannel
 
     // Track fullscreen state
@@ -152,8 +151,27 @@ class VideoPlayerView(
         // Set up fullscreen button listener after PlayerView is configured
         playerView.post {
             playerView.setFullscreenButtonClickListener { enteringFullScreen ->
-                Log.d(TAG, "Fullscreen button clicked, entering fullscreen: $enteringFullScreen")
-                handleFullscreenToggleNative(enteringFullScreen)
+                Log.d(TAG, "Fullscreen button clicked, wants to enter: $enteringFullScreen, current state: $isFullScreen")
+                
+                // The button sends us the state it wants to ENTER
+                // If we're already in that state, the button is out of sync (e.g., when Flutter triggered fullscreen)
+                // In that case, we should do the opposite action
+                val shouldEnter = if (isFullScreen && enteringFullScreen) {
+                    // Button wants to enter fullscreen, but we're already in fullscreen
+                    // This means the button icon is out of sync - we should exit instead
+                    Log.d(TAG, "Button out of sync: wants to enter but already in fullscreen, exiting instead")
+                    false
+                } else if (!isFullScreen && !enteringFullScreen) {
+                    // Button wants to exit fullscreen, but we're not in fullscreen
+                    // This means the button icon is out of sync - we should enter instead
+                    Log.d(TAG, "Button out of sync: wants to exit but not in fullscreen, entering instead")
+                    true
+                } else {
+                    // Button is in sync with our state
+                    enteringFullScreen
+                }
+                
+                handleFullscreenToggleNative(shouldEnter)
             }
         }
 
@@ -182,28 +200,37 @@ class VideoPlayerView(
         observer = VideoPlayerObserver(player, eventHandler)
         player.addListener(observer)
 
-        // When connecting to a shared player, send the current playback state immediately
-        // This ensures the new view knows if the video is playing or paused
-        if (controllerId != null) {
-            if (player.isPlaying) {
-                eventHandler.sendEvent("play")
-            } else if (player.playbackState != ExoPlayer.STATE_IDLE) {
-                eventHandler.sendEvent("pause")
-            }
-        }
-
-        // Setup method channel
-        val channelName = "native_video_player"
-        methodChannel = MethodChannel(binaryMessenger, channelName)
-        methodChannel.setMethodCallHandler { call, result ->
-            Log.d(TAG, "Received method call: ${call.method}")
-            handleMethodCall(call, result)
-        }
-
         // Setup event channel
         val eventChannelName = "native_video_player_$viewId"
         eventChannel = EventChannel(binaryMessenger, eventChannelName)
         eventChannel.setStreamHandler(eventHandler)
+
+        // For shared players, set up callback to send the current playback state
+        // when the event listener is attached (in onListen)
+        // This ensures the new view knows if the video is playing or paused
+        if (controllerId != null) {
+            eventHandler.setInitialStateCallback {
+                Log.d(TAG, "Sending initial state for shared player - isPlaying: ${player.isPlaying}, playbackState: ${player.playbackState}, duration: ${player.duration}")
+                
+                // Send loaded event first if the player has content loaded
+                // Check duration >= 0 because C.TIME_UNSET is a large negative value
+                if (player.playbackState != ExoPlayer.STATE_IDLE && player.duration >= 0) {
+                    eventHandler.sendEvent("loaded", mapOf(
+                        "duration" to player.duration.toInt()
+                    ))
+                }
+                
+                // Then send the current playback state
+                if (player.isPlaying) {
+                    eventHandler.sendEvent("play")
+                } else if (player.playbackState != ExoPlayer.STATE_IDLE) {
+                    eventHandler.sendEvent("pause")
+                }
+            }
+        }
+
+        // Method channel is handled at the plugin level
+        // No need to set up individual method channels for each view
 
         Log.d(TAG, "VideoPlayerView initialized")
     }
@@ -282,12 +309,24 @@ class VideoPlayerView(
 
         if (enteringFullScreen) {
             enterFullscreenNative(activity)
+            
+            // Notify Flutter that fullscreen was entered
+            eventHandler.sendEvent("fullscreenChange", mapOf("isFullscreen" to true))
         } else {
             exitFullscreenNative(activity)
+            
+            // Notify Flutter that fullscreen was exited
+            eventHandler.sendEvent("fullscreenChange", mapOf("isFullscreen" to false))
         }
 
         // Update internal state
         isFullScreen = enteringFullScreen
+        
+        // Update the fullscreen button icon to reflect the new state
+        // Use a delay to ensure the view transition has completed
+        playerView.postDelayed({
+            updateFullscreenButtonState(enteringFullScreen)
+        }, 100)
     }
 
     /**
@@ -353,9 +392,8 @@ class VideoPlayerView(
             // Handle back button to exit fullscreen
             setOnKeyListener { _, keyCode, event ->
                 if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP) {
-                    // Trigger the fullscreen button to exit
+                    // Trigger the fullscreen toggle to exit (it will handle state and events)
                     playerView.post {
-                        // Simulate clicking the fullscreen button to exit
                         handleFullscreenToggleNative(false)
                     }
                     true
@@ -465,6 +503,56 @@ class VideoPlayerView(
         activity.requestedOrientation = originalOrientation
 
         Log.d(TAG, "Exited fullscreen natively")
+    }
+
+    /**
+     * Updates the fullscreen button icon to match the current fullscreen state
+     * This is needed when fullscreen is toggled from Flutter rather than from the button itself
+     */
+    private fun updateFullscreenButtonState(isFullscreen: Boolean) {
+        try {
+            // Access the fullscreen button using reflection
+            // The button is part of the PlayerView's controller
+            val fullscreenButton = playerView.findViewById<android.widget.ImageButton>(
+                androidx.media3.ui.R.id.exo_fullscreen
+            )
+            
+            if (fullscreenButton != null) {
+                Log.d(TAG, "Fullscreen button found, current selected state: ${fullscreenButton.isSelected}, setting to: $isFullscreen")
+                
+                // Try multiple approaches to update the button icon
+                
+                // Approach 1: Update selected state
+                fullscreenButton.isSelected = isFullscreen
+                fullscreenButton.refreshDrawableState()
+                
+                // Approach 2: Update content description (helps with accessibility)
+                fullscreenButton.contentDescription = if (isFullscreen) "Exit fullscreen" else "Enter fullscreen"
+                
+                // Approach 3: Directly set the image resource based on fullscreen state
+                // ExoPlayer uses exo_icon_fullscreen_enter and exo_icon_fullscreen_exit
+                try {
+                    val iconResourceId = if (isFullscreen) {
+                        androidx.media3.ui.R.drawable.exo_icon_fullscreen_exit
+                    } else {
+                        androidx.media3.ui.R.drawable.exo_icon_fullscreen_enter
+                    }
+                    fullscreenButton.setImageResource(iconResourceId)
+                    Log.d(TAG, "Set fullscreen button icon directly to: ${if (isFullscreen) "exit" else "enter"}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not set fullscreen button icon directly: ${e.message}")
+                }
+                
+                // Force redraw
+                fullscreenButton.invalidate()
+                
+                Log.d(TAG, "Fullscreen button state updated successfully (new selected=${fullscreenButton.isSelected})")
+            } else {
+                Log.w(TAG, "Fullscreen button not found in PlayerView")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating fullscreen button state: ${e.message}", e)
+        }
     }
 
     /**
@@ -623,7 +711,6 @@ class VideoPlayerView(
         observer.release()
 
         // Clean up channels
-        methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
 
         // Note: player and notification handler are NOT released here if they're shared

@@ -214,7 +214,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Colors.black..withValues(alpha: 0.3),
+                              Colors.black.withValues(alpha: 0.3),
                               Colors.transparent,
                               Colors.black.withValues(alpha: 0.5),
                             ],

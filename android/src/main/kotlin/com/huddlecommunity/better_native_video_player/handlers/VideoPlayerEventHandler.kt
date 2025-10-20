@@ -8,6 +8,7 @@ import io.flutter.plugin.common.EventChannel
  */
 class VideoPlayerEventHandler(private val isSharedPlayer: Boolean = false) : EventChannel.StreamHandler {
     private var eventSink: EventChannel.EventSink? = null
+    private var initialStateCallback: (() -> Unit)? = null
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
         eventSink = events
@@ -15,11 +16,22 @@ class VideoPlayerEventHandler(private val isSharedPlayer: Boolean = false) : Eve
         // Shared players will send their current playback state instead
         if (!isSharedPlayer) {
             sendEvent("isInitialized")
+        } else {
+            // For shared players, send the current state once the listener is attached
+            initialStateCallback?.invoke()
         }
     }
 
     override fun onCancel(arguments: Any?) {
         eventSink = null
+    }
+
+    /**
+     * Sets a callback to send the initial state for shared players
+     * This callback is invoked when onListen is called
+     */
+    fun setInitialStateCallback(callback: () -> Unit) {
+        initialStateCallback = callback
     }
 
     /**

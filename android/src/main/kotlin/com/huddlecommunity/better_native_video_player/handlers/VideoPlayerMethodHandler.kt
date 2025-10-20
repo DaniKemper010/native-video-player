@@ -137,7 +137,7 @@ class VideoPlayerMethodHandler(
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == androidx.media3.common.Player.STATE_READY) {
-                    eventHandler.sendEvent("videoLoaded")
+                    eventHandler.sendEvent("loaded")
                     player.removeListener(this)
                     result.success(null)
                 }

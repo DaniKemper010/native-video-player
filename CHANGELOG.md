@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-10-20
+
+### Fixed
+- Fixed fullscreen exit handling on iOS when user dismisses by swiping down or tapping Done button
+- Fixed iOS playback state preservation when exiting fullscreen (video now resumes playing if it was playing before)
+- Fixed Android fullscreen button icon synchronization when fullscreen is toggled from Flutter code
+- Fixed fullscreen event parsing to properly distinguish between entering and exiting fullscreen states
+- Fixed shared player state synchronization by sending current playback state when new views attach
+
+### Improved
+- Standardized event naming by renaming `videoLoaded` to `loaded` across all platforms for consistency
+- Enhanced Android fullscreen button to detect and correct icon desynchronization
+- Improved shared player initial state callback mechanism to properly communicate loaded state with duration
+- Better fullscreen state event notifications on Android with proper `isFullscreen` data
+- Enhanced iOS fullscreen delegate handling with playback state restoration
+
 ## [0.1.2] - 2025-01-16
 
 ### Fixed

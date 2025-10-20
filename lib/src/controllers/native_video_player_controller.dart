@@ -216,7 +216,7 @@ class NativeVideoPlayerController {
           // Update activity state
           _updateState(_state.copyWith(activityState: activityEvent.state));
 
-          // Handle videoLoaded events to get initial duration
+          // Handle loaded events to get initial duration
           if (activityEvent.state == PlayerActivityState.loaded) {
             if (activityEvent.data != null) {
               final int duration = (activityEvent.data!['duration'] as num?)?.toInt() ?? 0;
@@ -342,7 +342,7 @@ class NativeVideoPlayerController {
   bool _isActivityEvent(String eventName) {
     switch (eventName) {
       case 'isInitialized':
-      case 'videoLoaded':
+      case 'loaded':
       case 'play':
       case 'pause':
       case 'buffering':

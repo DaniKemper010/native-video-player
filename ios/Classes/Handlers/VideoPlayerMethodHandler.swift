@@ -105,11 +105,11 @@ extension VideoPlayerView {
                 // Send Flutter event with duration (only if valid)
                 if durationSeconds.isFinite && !durationSeconds.isNaN {
                     let totalDuration = Int(durationSeconds * 1000) // milliseconds
-                    self.sendEvent("videoLoaded", data: [
+                    self.sendEvent("loaded", data: [
                         "duration": totalDuration
                     ])
                 } else {
-                    self.sendEvent("videoLoaded")
+                    self.sendEvent("loaded")
                 }
 
                 // Set now playing info *after* player item is ready
@@ -379,11 +379,19 @@ extension VideoPlayerView {
     }
 
     func handleExitFullScreen(result: @escaping FlutterResult) {
+        // Store the playback state before dismissing
+        let wasPlaying = player?.rate != 0
+        
         // Dismiss the fullscreen player view controller if it exists
         if let fullscreenVC = fullscreenPlayerViewController {
             fullscreenVC.dismiss(animated: true) {
                 // Clear the reference
                 self.fullscreenPlayerViewController = nil
+                
+                // Resume playback if it was playing before
+                if wasPlaying {
+                    self.player?.play()
+                }
 
                 self.sendEvent("fullscreenChange", data: ["isFullscreen": false])
                 result(nil)
@@ -391,6 +399,11 @@ extension VideoPlayerView {
         } else {
             // Fallback: dismiss the embedded player controller (shouldn't happen)
             playerViewController.dismiss(animated: true) {
+                // Resume playback if it was playing before
+                if wasPlaying {
+                    self.player?.play()
+                }
+                
                 self.sendEvent("fullscreenChange", data: ["isFullscreen": false])
                 result(nil)
             }

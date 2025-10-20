@@ -46,7 +46,7 @@ class PlayerActivityEvent {
     switch (event) {
       case 'isInitialized':
         return PlayerActivityState.initialized;
-      case 'videoLoaded':
+      case 'loaded':
         return PlayerActivityState.loaded;
       case 'play':
         return PlayerActivityState.playing;
@@ -74,7 +74,7 @@ class PlayerControlEvent {
 
   factory PlayerControlEvent.fromMap(Map<dynamic, dynamic> map) {
     final String eventName = map['event'] as String;
-    final PlayerControlState state = _stateFromString(eventName);
+    final PlayerControlState state = _stateFromString(eventName, map);
 
     final Map<String, dynamic> data = Map<String, dynamic>.from(map)..remove('event');
 
@@ -84,7 +84,7 @@ class PlayerControlEvent {
   final PlayerControlState state;
   final Map<String, dynamic>? data;
 
-  static PlayerControlState _stateFromString(String event) {
+  static PlayerControlState _stateFromString(String event, Map<dynamic, dynamic> map) {
     switch (event) {
       case 'qualityChange':
         return PlayerControlState.qualityChanged;
@@ -98,7 +98,8 @@ class PlayerControlEvent {
         return PlayerControlState.pipStopped;
       case 'fullscreenChange':
         // Check if entering or exiting fullscreen from data
-        return PlayerControlState.fullscreenEntered;
+        final bool isFullscreen = map['isFullscreen'] as bool? ?? true;
+        return isFullscreen ? PlayerControlState.fullscreenEntered : PlayerControlState.fullscreenExited;
       case 'timeUpdate':
         return PlayerControlState.timeUpdated;
       default:
