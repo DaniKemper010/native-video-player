@@ -1,4 +1,4 @@
-name: native_video_player
+name: better_native_video_player
 description: A Flutter plugin for native video playback using AVPlayerViewController on iOS and ExoPlayer on Android, with HLS support, Picture-in-Picture, and fullscreen playback.
 version: 0.0.1
 homepage: https://github.com/DaniKemper010/native-video-player
@@ -36,7 +36,7 @@ flutter:
   plugin:
     platforms:
       android:
-        package: com.huddlecommunity.native_video_player
+        package: com.huddlecommunity.better_native_video_player
         pluginClass: NativeVideoPlayerPlugin
       ios:
         pluginClass: NativeVideoPlayerPlugin

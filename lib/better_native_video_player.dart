@@ -7,7 +7,7 @@
 /// - Fullscreen playback
 /// - Now Playing integration (Control Center / lock screen)
 /// - Background playback with media notifications
-library native_video_player;
+library better_native_video_player;
 
 export 'src/controllers/native_video_player_controller.dart';
 export 'src/enums/native_video_player_event.dart';

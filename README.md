@@ -1,4 +1,4 @@
-# native_video_player
+# better_native_video_player
 
 A Flutter plugin for native video playback on iOS and Android with advanced features.
 
@@ -30,7 +30,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  native_video_player: ^0.0.1
+  better_native_video_player: ^0.0.1
 ```
 
 Then run:
@@ -65,7 +65,7 @@ The plugin automatically configures the required permissions and services in its
 
 ```dart
 import 'package:flutter/material.dart';
-import 'package:native_video_player/native_video_player.dart';
+import 'package:better_native_video_player/better_native_video_player.dart';
 
 class VideoPlayerPage extends StatefulWidget {
   const VideoPlayerPage({super.key});

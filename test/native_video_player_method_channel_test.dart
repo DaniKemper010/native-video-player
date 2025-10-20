@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:native_video_player/src/models/native_video_player_media_info.dart';
-import 'package:native_video_player/src/models/native_video_player_quality.dart';
+import 'package:better_native_video_player/src/models/native_video_player_media_info.dart';
+import 'package:better_native_video_player/src/models/native_video_player_quality.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -10,45 +10,42 @@ void main() {
   final List<MethodCall> methodCalls = <MethodCall>[];
 
   setUp(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
-          methodCalls.add(methodCall);
-          switch (methodCall.method) {
-            case 'load':
-              return null;
-            case 'play':
-              return null;
-            case 'pause':
-              return null;
-            case 'seekTo':
-              return null;
-            case 'setVolume':
-              return null;
-            case 'setSpeed':
-              return null;
-            case 'setQuality':
-              return null;
-            case 'getAvailableQualities':
-              return [
-                {
-                  'label': '1080p',
-                  'url': 'https://example.com/video_1080p.m3u8',
-                },
-                {'label': '720p', 'url': 'https://example.com/video_720p.m3u8'},
-              ];
-            case 'enterFullScreen':
-              return null;
-            case 'exitFullScreen':
-              return null;
-            default:
-              return null;
-          }
-        });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      MethodCall methodCall,
+    ) async {
+      methodCalls.add(methodCall);
+      switch (methodCall.method) {
+        case 'load':
+          return null;
+        case 'play':
+          return null;
+        case 'pause':
+          return null;
+        case 'seekTo':
+          return null;
+        case 'setVolume':
+          return null;
+        case 'setSpeed':
+          return null;
+        case 'setQuality':
+          return null;
+        case 'getAvailableQualities':
+          return [
+            {'label': '1080p', 'url': 'https://example.com/video_1080p.m3u8'},
+            {'label': '720p', 'url': 'https://example.com/video_720p.m3u8'},
+          ];
+        case 'enterFullScreen':
+          return null;
+        case 'exitFullScreen':
+          return null;
+        default:
+          return null;
+      }
+    });
   });
 
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
     methodCalls.clear();
   });
 
@@ -81,18 +78,12 @@ void main() {
 
   test('play method is called correctly', () async {
     await channel.invokeMethod<void>('play');
-    expect(
-      methodCalls,
-      contains(isA<MethodCall>().having((c) => c.method, 'method', 'play')),
-    );
+    expect(methodCalls, contains(isA<MethodCall>().having((c) => c.method, 'method', 'play')));
   });
 
   test('pause method is called correctly', () async {
     await channel.invokeMethod<void>('pause');
-    expect(
-      methodCalls,
-      contains(isA<MethodCall>().having((c) => c.method, 'method', 'pause')),
-    );
+    expect(methodCalls, contains(isA<MethodCall>().having((c) => c.method, 'method', 'pause')));
   });
 
   test('seekTo method sends correct position', () async {
@@ -101,9 +92,7 @@ void main() {
     expect(
       methodCalls,
       contains(
-        isA<MethodCall>()
-            .having((c) => c.method, 'method', 'seekTo')
-            .having((c) => c.arguments, 'arguments', position),
+        isA<MethodCall>().having((c) => c.method, 'method', 'seekTo').having((c) => c.arguments, 'arguments', position),
       ),
     );
   });
@@ -127,9 +116,7 @@ void main() {
     expect(
       methodCalls,
       contains(
-        isA<MethodCall>()
-            .having((c) => c.method, 'method', 'setSpeed')
-            .having((c) => c.arguments, 'arguments', speed),
+        isA<MethodCall>().having((c) => c.method, 'method', 'setSpeed').having((c) => c.arguments, 'arguments', speed),
       ),
     );
   });
@@ -151,9 +138,7 @@ void main() {
   });
 
   test('getAvailableQualities returns correct list', () async {
-    final List<dynamic>? result = await channel.invokeMethod<List<dynamic>>(
-      'getAvailableQualities',
-    );
+    final List<dynamic>? result = await channel.invokeMethod<List<dynamic>>('getAvailableQualities');
     expect(result, isNotNull);
     expect(result!.length, equals(2));
     expect(result.first, containsPair('label', '1080p'));
@@ -168,11 +153,7 @@ void main() {
       contains(
         isA<MethodCall>()
             .having((c) => c.method, 'method', 'enterFullScreen')
-            .having(
-              (c) => c.arguments,
-              'arguments',
-              containsPair('viewId', viewId),
-            ),
+            .having((c) => c.arguments, 'arguments', containsPair('viewId', viewId)),
       ),
     );
   });
@@ -185,11 +166,7 @@ void main() {
       contains(
         isA<MethodCall>()
             .having((c) => c.method, 'method', 'exitFullScreen')
-            .having(
-              (c) => c.arguments,
-              'arguments',
-              containsPair('viewId', viewId),
-            ),
+            .having((c) => c.arguments, 'arguments', containsPair('viewId', viewId)),
       ),
     );
   });

@@ -2,7 +2,7 @@
     <application>
         <!-- Media Session Service for video playback notifications and background playback -->
         <service
-            android:name="com.huddlecommunity.native_video_player.VideoPlayerMediaSessionService"
+            android:name="com.huddlecommunity.better_native_video_player.VideoPlayerMediaSessionService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
