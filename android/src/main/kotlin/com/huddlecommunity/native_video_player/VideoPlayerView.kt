@@ -76,6 +76,11 @@ class VideoPlayerView(
     private var originalSystemUiVisibility: Int = 0
     private var originalOrientation: Int = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
+    // PiP settings
+    private var allowsPictureInPicture: Boolean = true
+    private var canStartPictureInPictureAutomatically: Boolean = false
+    private var showNativeControlsOriginal: Boolean = true
+
 
     init {
         Log.d(TAG, "Creating VideoPlayerView with id: $viewId")
@@ -86,6 +91,12 @@ class VideoPlayerView(
         // Extract initial fullscreen state from args
         isFullScreen = args?.get("isFullScreen") as? Boolean ?: false
         Log.d(TAG, "Initial fullscreen state: $isFullScreen")
+
+        // Extract PiP settings from args
+        allowsPictureInPicture = args?.get("allowsPictureInPicture") as? Boolean ?: true
+        canStartPictureInPictureAutomatically = args?.get("canStartPictureInPictureAutomatically") as? Boolean ?: false
+        showNativeControlsOriginal = args?.get("showNativeControls") as? Boolean ?: true
+        Log.d(TAG, "PiP settings - allows: $allowsPictureInPicture, autoStart: $canStartPictureInPictureAutomatically, showControls: $showNativeControlsOriginal")
 
         // Get or create shared player
         player = if (controllerId != null) {
@@ -201,16 +212,27 @@ class VideoPlayerView(
      * Checks if Picture-in-Picture is available on this device
      */
     private fun checkPictureInPictureAvailability(result: MethodChannel.Result) {
+        Log.d(TAG, "Checking PiP availability - Android version: ${android.os.Build.VERSION.SDK_INT}")
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val activity = getActivity(context)
+            // Try to get activity from plugin first
+            val pluginActivity = NativeVideoPlayerPlugin.getActivity()
+            val activity = pluginActivity ?: getActivity(context)
+
             if (activity != null) {
+                Log.d(TAG, "Activity found: ${activity.javaClass.simpleName}")
                 val packageManager = activity.packageManager
                 val hasPipFeature = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+                Log.d(TAG, "PiP feature available: $hasPipFeature")
                 result.success(hasPipFeature)
             } else {
-                result.success(false)
+                Log.e(TAG, "No activity found, cannot check PiP availability")
+                // On Android 8+, PiP should be available even if we can't get the activity
+                // Return true and let enterPictureInPicture fail if it's not actually available
+                result.success(true)
             }
         } else {
+            Log.d(TAG, "Android version too old for PiP (< 8.0)")
             result.success(false)
         }
     }
@@ -426,8 +448,82 @@ class VideoPlayerView(
      * Enter Picture-in-Picture mode
      */
     private fun enterPictureInPicture(result: MethodChannel.Result) {
+        Log.d(TAG, "Attempting to enter PiP mode")
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val activity = getActivity(context)
+            // Try to get activity from plugin first
+            val pluginActivity = NativeVideoPlayerPlugin.getActivity()
+            val activity = pluginActivity ?: getActivity(context)
+
+            if (activity != null) {
+                Log.d(TAG, "Activity found for PiP: ${activity.javaClass.simpleName}")
+
+                val aspectRatio = player.videoSize.let { size ->
+                    if (size.width > 0 && size.height > 0) {
+                        Log.d(TAG, "Using video aspect ratio: ${size.width}x${size.height}")
+                        android.util.Rational(size.width, size.height)
+                    } else {
+                        Log.d(TAG, "Using default aspect ratio 16:9")
+                        android.util.Rational(16, 9)
+                    }
+                }
+
+                val params = android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(aspectRatio)
+                    .build()
+
+                // Hide ExoPlayer controls BEFORE entering PiP mode - only system PiP controls will show
+                // Setting useController to false removes the controller UI completely
+                Log.d(TAG, "Current useController: ${playerView.useController}")
+                playerView.useController = false
+                playerView.controllerAutoShow = false
+                playerView.hideController()
+                Log.d(TAG, "ExoPlayer controls hidden (useController: ${playerView.useController})")
+
+                val entered = activity.enterPictureInPictureMode(params)
+                Log.d(TAG, "PiP mode entered: $entered")
+
+                if (entered) {
+                    eventHandler.sendEvent("pipStart", mapOf("isPictureInPicture" to true))
+                    result.success(true)
+                } else {
+                    // Restore controls if PiP failed
+                    playerView.useController = showNativeControlsOriginal
+                    Log.e(TAG, "Failed to enter PiP mode")
+                    result.error("PIP_FAILED", "Failed to enter PiP mode", null)
+                }
+            } else {
+                Log.e(TAG, "No activity found for PiP")
+                result.error("NO_ACTIVITY", "Context is not an Activity", null)
+            }
+        } else {
+            Log.e(TAG, "PiP not supported on Android version: ${android.os.Build.VERSION.SDK_INT}")
+            result.error("NOT_SUPPORTED", "PiP not supported on this Android version", null)
+        }
+    }
+
+    /**
+     * Automatically enters PiP when user leaves the app (if enabled)
+     * This is called from the activity's onUserLeaveHint
+     */
+    fun tryAutoPictureInPicture(): Boolean {
+        if (!canStartPictureInPictureAutomatically || !allowsPictureInPicture) {
+            Log.d(TAG, "Auto PiP not enabled - auto: $canStartPictureInPictureAutomatically, allows: $allowsPictureInPicture")
+            return false
+        }
+
+        // Only auto-enter PiP if video is playing
+        if (!player.isPlaying) {
+            Log.d(TAG, "Auto PiP skipped - video not playing")
+            return false
+        }
+
+        Log.d(TAG, "Attempting auto PiP entry")
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val pluginActivity = NativeVideoPlayerPlugin.getActivity()
+            val activity = pluginActivity ?: getActivity(context)
+
             if (activity != null) {
                 val aspectRatio = player.videoSize.let { size ->
                     if (size.width > 0 && size.height > 0) {
@@ -441,19 +537,41 @@ class VideoPlayerView(
                     .setAspectRatio(aspectRatio)
                     .build()
 
+                // Hide ExoPlayer controls BEFORE entering PiP mode
+                playerView.useController = false
+                playerView.controllerAutoShow = false
+                playerView.hideController()
+                Log.d(TAG, "ExoPlayer controls hidden before entering auto PiP mode")
+
                 val entered = activity.enterPictureInPictureMode(params)
+                Log.d(TAG, "Auto PiP entered: $entered")
+
                 if (entered) {
-                    eventHandler.sendEvent("pictureInPictureStatusChanged", mapOf("isPictureInPicture" to true))
-                    result.success(true)
+                    eventHandler.sendEvent("pipStart", mapOf("isPictureInPicture" to true, "auto" to true))
                 } else {
-                    result.error("PIP_FAILED", "Failed to enter PiP mode", null)
+                    // Restore controls if PiP failed
+                    playerView.useController = showNativeControlsOriginal
                 }
-            } else {
-                result.error("NO_ACTIVITY", "Context is not an Activity", null)
+
+                return entered
             }
-        } else {
-            result.error("NOT_SUPPORTED", "PiP not supported on this Android version", null)
         }
+
+        return false
+    }
+
+    /**
+     * Restores ExoPlayer controls when exiting PiP mode
+     * This should be called when onPictureInPictureModeChanged detects exit from PiP
+     */
+    fun onExitPictureInPicture() {
+        Log.d(TAG, "Exiting PiP mode - restoring controls")
+        playerView.useController = showNativeControlsOriginal
+        playerView.controllerAutoShow = true
+        if (showNativeControlsOriginal) {
+            playerView.showController()
+        }
+        Log.d(TAG, "ExoPlayer controls restored to: $showNativeControlsOriginal")
     }
 
     override fun dispose() {

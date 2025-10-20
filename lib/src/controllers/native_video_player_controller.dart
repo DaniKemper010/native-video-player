@@ -39,7 +39,7 @@ class NativeVideoPlayerController {
 
   /// Initialize the controller and wait for the platform view to be created
   Future<void> initialize() async {
-    if (_state.isInitialized) {
+    if (_state.activityState.isInitialized) {
       return;
     }
 
@@ -49,7 +49,7 @@ class NativeVideoPlayerController {
     // Wait for the platform view to be created
     await _initializeCompleter!.future;
 
-    _updateState(_state.copyWith(isInitialized: true));
+    _updateState(_state.copyWith(activityState: PlayerActivityState.initialized));
   }
 
   /// Unique identifier for this video player instance
@@ -91,26 +91,40 @@ class NativeVideoPlayerController {
   /// Event channel subscriptions for each platform view
   final Map<int, StreamSubscription<dynamic>> _eventSubscriptions = <int, StreamSubscription<dynamic>>{};
 
-  /// Event handlers for video player events (supports multiple listeners)
-  final List<void Function(NativeVideoPlayerEvent)> _eventHandlers = <void Function(NativeVideoPlayerEvent)>[];
+  /// MainActivity PiP event channel subscription (Android only)
+  StreamSubscription<dynamic>? _pipEventSubscription;
+
+  /// Whether the MainActivity PiP event listener has been set up
+  static bool _pipEventListenerSetup = false;
+
+  /// Activity event handlers (play, pause, buffering, etc.)
+  final List<void Function(PlayerActivityEvent)> _activityEventHandlers = <void Function(PlayerActivityEvent)>[];
+
+  /// Control event handlers (quality, speed, pip, fullscreen, etc.)
+  final List<void Function(PlayerControlEvent)> _controlEventHandlers = <void Function(PlayerControlEvent)>[];
 
   /// Updates the internal state
-  void _updateState(NativeVideoPlayerState newState) {
-    _state = newState;
-  }
+  void _updateState(NativeVideoPlayerState newState) => _state = newState;
 
-  /// Adds a listener for video player events
-  void addListener(void Function(NativeVideoPlayerEvent) listener) {
-    if (!_eventHandlers.contains(listener)) {
-      _eventHandlers.add(listener);
+  /// Adds a listener for activity events (play, pause, buffering, etc.)
+  void addActivityListener(void Function(PlayerActivityEvent) listener) {
+    if (!_activityEventHandlers.contains(listener)) {
+      _activityEventHandlers.add(listener);
     }
   }
 
-  /// Removes a listener for video player events
-  void removeListener(void Function(NativeVideoPlayerEvent) listener) => _eventHandlers.remove(listener);
+  /// Removes a listener for activity events
+  void removeActivityListener(void Function(PlayerActivityEvent) listener) => _activityEventHandlers.remove(listener);
 
-  /// Whether the controller is loaded and ready to accept commands
-  bool get isLoaded => _state.isLoaded;
+  /// Adds a listener for control events (quality, speed, pip, fullscreen, etc.)
+  void addControlListener(void Function(PlayerControlEvent) listener) {
+    if (!_controlEventHandlers.contains(listener)) {
+      _controlEventHandlers.add(listener);
+    }
+  }
+
+  /// Removes a listener for control events
+  void removeControlListener(void Function(PlayerControlEvent) listener) => _controlEventHandlers.remove(listener);
 
   /// Video URL to play (supports HLS .m3u8 and direct video URLs)
   /// Returns null if load() has not been called yet
@@ -133,6 +147,12 @@ class NativeVideoPlayerController {
 
   /// Returns the current volume (0.0 to 1.0)
   double get volume => _state.volume;
+
+  /// Returns the current activity state (playing, paused, buffering, etc.)
+  PlayerActivityState get activityState => _state.activityState;
+
+  /// Returns the current control state (quality change, pip, fullscreen, etc.)
+  PlayerControlState get controlState => _state.controlState;
 
   /// Current player state
   NativeVideoPlayerState get state => _state;
@@ -173,56 +193,164 @@ class NativeVideoPlayerController {
     // Set up event stream and store the subscription for later cleanup
     _eventSubscriptions[platformViewId] = eventChannel
         .receiveBroadcastStream()
-        .map((dynamic event) => NativeVideoPlayerEvent.fromMap(event as Map<dynamic, dynamic>))
         .listen(
-          (NativeVideoPlayerEvent event) async {
-            // Complete initialization when we receive the isInitialized event
-            if (!_state.isInitialized && event.type == NativeVideoPlayerEventType.isInitialized) {
-              _initializeCompleter?.complete();
-            }
+          (dynamic eventMap) async {
+            final map = eventMap as Map<dynamic, dynamic>;
+            final String eventName = map['event'] as String;
 
-            // Handle fullscreen change events from native
-            if (event.type == NativeVideoPlayerEventType.fullscreenChange) {
-              final bool isFullscreen = event.data?['isFullscreen'] as bool;
-              _updateState(_state.copyWith(isFullScreen: isFullscreen));
-            }
+            // Determine if this is an activity event or control event
+            final isActivityEvent = _isActivityEvent(eventName);
 
-            // Handle time update events from native
-            if (event.type == NativeVideoPlayerEventType.timeUpdate) {
-              if (event.data != null) {
-                final int position = (event.data!['position'] as num?)?.toInt() ?? 0;
-                final int duration = (event.data!['duration'] as num?)?.toInt() ?? 0;
-                final int bufferedPosition = (event.data!['bufferedPosition'] as num?)?.toInt() ?? 0;
+            if (isActivityEvent) {
+              final activityEvent = PlayerActivityEvent.fromMap(map);
 
-                _updateState(
-                  _state.copyWith(
+              // Complete initialization when we receive the isInitialized event
+              if (!_state.activityState.isInitialized &&
+                  activityEvent.state == PlayerActivityState.initialized &&
+                  _initializeCompleter != null &&
+                  !_initializeCompleter!.isCompleted) {
+                _initializeCompleter!.complete();
+              }
+
+              // Update activity state
+              _updateState(_state.copyWith(activityState: activityEvent.state));
+
+              // Handle videoLoaded events to get initial duration
+              if (activityEvent.state == PlayerActivityState.loaded) {
+                if (activityEvent.data != null) {
+                  final int duration = (activityEvent.data!['duration'] as num?)?.toInt() ?? 0;
+                  _updateState(_state.copyWith(duration: Duration(milliseconds: duration)));
+                }
+              }
+
+              // Notify activity listeners
+              for (final handler in _activityEventHandlers) {
+                handler(activityEvent);
+              }
+            } else {
+              final controlEvent = PlayerControlEvent.fromMap(map);
+
+              // Handle fullscreen change events
+              if (controlEvent.state == PlayerControlState.fullscreenEntered ||
+                  controlEvent.state == PlayerControlState.fullscreenExited) {
+                final bool isFullscreen = controlEvent.data?['isFullscreen'] as bool? ??
+                                          controlEvent.state == PlayerControlState.fullscreenEntered;
+                _updateState(_state.copyWith(
+                  isFullScreen: isFullscreen,
+                  controlState: controlEvent.state,
+                ));
+              }
+
+              // Handle time update events
+              if (controlEvent.state == PlayerControlState.timeUpdated) {
+                if (controlEvent.data != null) {
+                  final int position = (controlEvent.data!['position'] as num?)?.toInt() ?? 0;
+                  final int duration = (controlEvent.data!['duration'] as num?)?.toInt() ?? 0;
+                  final int bufferedPosition = (controlEvent.data!['bufferedPosition'] as num?)?.toInt() ?? 0;
+
+                  _updateState(_state.copyWith(
                     currentPosition: Duration(milliseconds: position),
                     duration: Duration(milliseconds: duration),
                     bufferedPosition: Duration(milliseconds: bufferedPosition),
-                  ),
-                );
+                    controlState: controlEvent.state,
+                  ));
+                }
+              } else {
+                // Update control state for other control events
+                _updateState(_state.copyWith(controlState: controlEvent.state));
               }
-            }
 
-            // Handle videoLoaded events to get initial duration
-            if (event.type == NativeVideoPlayerEventType.videoLoaded) {
-              if (event.data != null) {
-                final int duration = (event.data!['duration'] as num?)?.toInt() ?? 0;
-                _updateState(_state.copyWith(duration: Duration(milliseconds: duration)));
+              // Notify control listeners
+              for (final handler in _controlEventHandlers) {
+                handler(controlEvent);
               }
-            }
-
-            // Notify all listeners
-            for (final void Function(NativeVideoPlayerEvent) handler in _eventHandlers) {
-              handler(event);
             }
           },
           onError: (dynamic error) {
-            if (!_state.isInitialized) {
-              _initializeCompleter?.completeError(error);
+            if (!_state.activityState.isInitialized &&
+                _initializeCompleter != null &&
+                !_initializeCompleter!.isCompleted) {
+              _initializeCompleter!.completeError(error);
             }
           },
         );
+
+    // Set up MainActivity PiP event listener (Android only, once per app)
+    _setupMainActivityPipListener();
+  }
+
+  /// Sets up a global PiP event listener from MainActivity (Android only)
+  ///
+  /// This listener receives PiP enter/exit events from the MainActivity
+  /// when the user presses the home button or exits PiP mode.
+  /// Only set up once per app lifecycle.
+  void _setupMainActivityPipListener() {
+    if (_pipEventListenerSetup) {
+      return;
+    }
+
+    try {
+      final EventChannel pipEventChannel = const EventChannel('native_video_player_pip_events');
+      _pipEventSubscription = pipEventChannel.receiveBroadcastStream().listen(
+        (dynamic eventMap) {
+          final map = eventMap as Map<dynamic, dynamic>;
+          final String eventName = map['event'] as String;
+          final bool isInPipMode = map['isInPictureInPictureMode'] as bool? ?? false;
+
+          // Create a control event based on the MainActivity event
+          final PlayerControlState state;
+          if (eventName == 'pipStart') {
+            state = PlayerControlState.pipStarted;
+          } else if (eventName == 'pipStop') {
+            state = PlayerControlState.pipStopped;
+          } else {
+            return;
+          }
+
+          final controlEvent = PlayerControlEvent(
+            state: state,
+            data: <String, dynamic>{
+              'isPictureInPicture': isInPipMode,
+              'fromMainActivity': true,
+            },
+          );
+
+          // Update controller state
+          _updateState(_state.copyWith(controlState: state));
+
+          // Notify all control listeners
+          for (final handler in _controlEventHandlers) {
+            handler(controlEvent);
+          }
+        },
+        onError: (dynamic error) {
+          debugPrint('MainActivity PiP event channel error: $error');
+        },
+      );
+
+      _pipEventListenerSetup = true;
+    } catch (e) {
+      // EventChannel not available (likely iOS)
+      debugPrint('MainActivity PiP event channel not available (expected on iOS): $e');
+    }
+  }
+
+  /// Determines if an event name is an activity event
+  bool _isActivityEvent(String eventName) {
+    switch (eventName) {
+      case 'isInitialized':
+      case 'videoLoaded':
+      case 'play':
+      case 'pause':
+      case 'buffering':
+      case 'loading':
+      case 'completed':
+      case 'stopped':
+      case 'error':
+        return true;
+      default:
+        return false;
+    }
   }
 
   /// Called when a platform view is disposed
@@ -246,7 +374,7 @@ class NativeVideoPlayerController {
       // If there are other views, we need to reinitialize with a new primary
       if (_platformViewIds.isNotEmpty) {
         // Mark as needing reinitialization for the next view
-        _updateState(_state.copyWith(isInitialized: false, isLoaded: false));
+        _updateState(_state.copyWith(activityState: PlayerActivityState.idle));
         _methodChannel = null;
       }
     }
@@ -265,11 +393,11 @@ class NativeVideoPlayerController {
   /// **Returns:**
   /// A Future that completes when the video is loaded
   Future<void> load({required String url, Map<String, String>? headers}) async {
-    if (_state.isLoaded) {
+    if (_state.activityState.isLoaded) {
       return;
     }
 
-    if (!_state.isInitialized) {
+    if (!_state.activityState.isInitialized) {
       throw Exception('Controller not initialized. Call initialize() first.');
     }
 
@@ -285,20 +413,20 @@ class NativeVideoPlayerController {
       // Fetch available qualities after loading
       final qualities = await _methodChannel!.getAvailableQualities();
 
-      _updateState(_state.copyWith(qualities: qualities, isLoaded: true));
+      _updateState(_state.copyWith(qualities: qualities, activityState: PlayerActivityState.loaded));
 
-      // Notify listeners about available qualities
+      // Notify control listeners about available qualities
       if (qualities.isNotEmpty) {
-        for (final handler in _eventHandlers) {
-          handler(
-            NativeVideoPlayerEvent(
-              type: NativeVideoPlayerEventType.qualityChange,
-              data: {
-                'qualities': qualities.map((q) => q.toMap()).toList(),
-                if (qualities.isNotEmpty) 'quality': qualities.first.toMap(),
-              },
-            ),
-          );
+        final qualityEvent = PlayerControlEvent(
+          state: PlayerControlState.qualityChanged,
+          data: {
+            'qualities': qualities.map((q) => q.toMap()).toList(),
+            if (qualities.isNotEmpty) 'quality': qualities.first.toMap(),
+          },
+        );
+
+        for (final handler in _controlEventHandlers) {
+          handler(qualityEvent);
         }
       }
     } catch (e) {
@@ -421,6 +549,7 @@ class NativeVideoPlayerController {
     _platformViewIds.clear();
     _primaryPlatformViewId = null;
     _initializeCompleter = null;
-    _eventHandlers.clear();
+    _activityEventHandlers.clear();
+    _controlEventHandlers.clear();
   }
 }

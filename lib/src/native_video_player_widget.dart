@@ -24,58 +24,15 @@ class NativeVideoPlayer extends StatefulWidget {
 
 class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
   int? _platformViewId;
-  StreamSubscription<dynamic>? _controllerEventSubscription;
-  StreamController<NativeVideoPlayerEvent>? _eventStreamController;
-
-  /// Event handler callback for controller events
-  void _handleControllerEvent(NativeVideoPlayerEvent event) {
-    try {
-      _eventStreamController?.add(event);
-    } catch (e, s) {
-      debugPrint('Error handling controller event: $e\n$s');
-    }
-  }
-
-  /// Listens to controller events
-  StreamSubscription<dynamic>? _listenToControllerEvents() {
-    // Create a stream controller to bridge the callback-based listener
-    _eventStreamController =
-        StreamController<NativeVideoPlayerEvent>.broadcast();
-
-    // Subscribe to the stream FIRST, before adding the controller listener
-    // This ensures we don't miss any events
-    final StreamSubscription<NativeVideoPlayerEvent> subscription =
-        _eventStreamController!.stream.listen((NativeVideoPlayerEvent event) {
-          // Handle events if needed
-        });
-
-    // Now add listener to native video player controller
-    widget.controller.addListener(_handleControllerEvent);
-
-    return subscription;
-  }
 
   @override
   void dispose() {
-    // Always remove listener since we always add one
-    widget.controller.removeListener(_handleControllerEvent);
-
-    unawaited(_controllerEventSubscription?.cancel());
-    unawaited(_eventStreamController?.close());
-
     // Notify the controller that this platform view is being disposed
     if (_platformViewId != null) {
       widget.controller.onPlatformViewDisposed(_platformViewId!);
     }
 
     super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    // Setup listener for controller
-    _controllerEventSubscription = _listenToControllerEvents();
   }
 
   /// Called when the platform view is created
@@ -111,10 +68,7 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> {
       );
     }
 
-    return const Text(
-      'Only iOS and Android are supported',
-      textAlign: TextAlign.center,
-    );
+    return const Text('Only iOS and Android are supported', textAlign: TextAlign.center);
   }
 
   @override

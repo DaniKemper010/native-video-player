@@ -1,3 +1,4 @@
+import '../enums/native_video_player_event.dart';
 import 'native_video_player_quality.dart';
 
 /// Represents the state of the native video player
@@ -9,8 +10,8 @@ class NativeVideoPlayerState {
     this.bufferedPosition = Duration.zero,
     this.volume = 1.0,
     this.qualities = const <NativeVideoPlayerQuality>[],
-    this.isInitialized = false,
-    this.isLoaded = false,
+    this.activityState = PlayerActivityState.idle,
+    this.controlState = PlayerControlState.none,
   });
 
   /// Whether the video is currently in fullscreen mode
@@ -31,11 +32,11 @@ class NativeVideoPlayerState {
   /// Available video qualities (HLS variants)
   final List<NativeVideoPlayerQuality> qualities;
 
-  /// Whether the controller has been initialized
-  final bool isInitialized;
+  /// Current activity state (playing, paused, buffering, etc.)
+  final PlayerActivityState activityState;
 
-  /// Whether the controller has been loaded and is ready to use
-  final bool isLoaded;
+  /// Current control state (quality change, speed change, pip, fullscreen, etc.)
+  final PlayerControlState controlState;
 
   /// Creates a copy of this state with the given fields replaced with new values
   NativeVideoPlayerState copyWith({
@@ -45,8 +46,8 @@ class NativeVideoPlayerState {
     Duration? bufferedPosition,
     double? volume,
     List<NativeVideoPlayerQuality>? qualities,
-    bool? isInitialized,
-    bool? isLoaded,
+    PlayerActivityState? activityState,
+    PlayerControlState? controlState,
   }) {
     return NativeVideoPlayerState(
       isFullScreen: isFullScreen ?? this.isFullScreen,
@@ -55,8 +56,8 @@ class NativeVideoPlayerState {
       bufferedPosition: bufferedPosition ?? this.bufferedPosition,
       volume: volume ?? this.volume,
       qualities: qualities ?? this.qualities,
-      isInitialized: isInitialized ?? this.isInitialized,
-      isLoaded: isLoaded ?? this.isLoaded,
+      activityState: activityState ?? this.activityState,
+      controlState: controlState ?? this.controlState,
     );
   }
 
@@ -71,21 +72,12 @@ class NativeVideoPlayerState {
         other.bufferedPosition == bufferedPosition &&
         other.volume == volume &&
         other.qualities == qualities &&
-        other.isInitialized == isInitialized &&
-        other.isLoaded == isLoaded;
+        other.activityState == activityState &&
+        other.controlState == controlState;
   }
 
   @override
   int get hashCode {
-    return Object.hash(
-      isFullScreen,
-      currentPosition,
-      duration,
-      bufferedPosition,
-      volume,
-      qualities,
-      isInitialized,
-      isLoaded,
-    );
+    return Object.hash(isFullScreen, currentPosition, duration, bufferedPosition, volume, qualities, activityState, controlState);
   }
 }

@@ -51,7 +51,7 @@ void main() {
 
     // Wait for video to load
     await tester.pumpAndSettle();
-    expect(controller.isLoaded, isTrue);
+    expect(controller.activityState.isLoaded, isTrue);
 
     // Test playback controls
     await controller.play();
@@ -82,7 +82,8 @@ void main() {
   });
 
   testWidgets('Video player event handling test', (WidgetTester tester) async {
-    final List<NativeVideoPlayerEvent> receivedEvents = [];
+    final List<PlayerActivityEvent> receivedActivityEvents = [];
+    final List<PlayerControlEvent> receivedControlEvents = [];
 
     // Build widget
     await tester.pumpWidget(
@@ -93,8 +94,9 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    // Add event listener
-    controller.addListener((event) => receivedEvents.add(event));
+    // Add event listeners
+    controller.addActivityListener((event) => receivedActivityEvents.add(event));
+    controller.addControlListener((event) => receivedControlEvents.add(event));
 
     // Initialize and load video
     await controller.initialize();
@@ -112,7 +114,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify we received some events
-    expect(receivedEvents, isNotEmpty);
+    expect(receivedActivityEvents, isNotEmpty);
   });
 
   testWidgets('Video player error handling test', (WidgetTester tester) async {

@@ -13,33 +13,46 @@ class VideoPlayerCard extends StatefulWidget {
   State<VideoPlayerCard> createState() => _VideoPlayerCardState();
 }
 
-class _VideoPlayerCardState extends State<VideoPlayerCard> {
-  late NativeVideoPlayerController _controller;
+class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAliveClientMixin {
+  NativeVideoPlayerController? _controller;
   String _status = 'Ready';
   Duration _currentPosition = Duration.zero;
   Duration _duration = Duration.zero;
+  bool _shouldCreatePlayer = false;
 
   @override
-  void initState() {
-    super.initState();
-    // Just create the controller, don't call initialize()
-    // The NativeVideoPlayer widget will handle initialization when it builds
-    _controller = NativeVideoPlayerController(
-      id: widget.video.id,
-      autoPlay: false,
-      showNativeControls: true,
-      mediaInfo: NativeVideoPlayerMediaInfo(title: widget.video.title, subtitle: widget.video.description),
-    );
+  bool get wantKeepAlive => true;
 
-    _controller.addListener(_handlePlayerEvent);
+  Future<void> _ensureControllerCreated() async {
+    if (_controller == null) {
+      _controller = NativeVideoPlayerController(
+        id: widget.video.id,
+        autoPlay: false,
+        showNativeControls: true,
+        mediaInfo: NativeVideoPlayerMediaInfo(title: widget.video.title, subtitle: widget.video.description),
+      );
 
-    _loadVideo();
+      _controller!.addActivityListener(_handleActivityEvent);
+      _controller!.addControlListener(_handleControlEvent);
+
+      // Set initial status
+      setState(() {
+        if (_controller == null) return;
+        _currentPosition = _controller!.currentPosition;
+        _duration = _controller!.duration;
+        _status = _getStatusFromActivityState(_controller!.activityState);
+      });
+
+      await _loadVideo();
+    }
   }
 
   Future<void> _loadVideo() async {
+    if (_controller == null) return;
+
     try {
-      await _controller.initialize();
-      await _controller.load(url: widget.video.url);
+      await _controller!.initialize();
+      await _controller!.load(url: widget.video.url);
       debugPrint('VideoPlayerCard ${widget.video.id}: Video loaded!');
     } catch (e) {
       if (mounted) {
@@ -51,54 +64,86 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> {
     }
   }
 
-  void _handlePlayerEvent(NativeVideoPlayerEvent event) {
+  Future<void> _onPlayButtonPressed() async {
+    if (_controller == null) {
+      setState(() {
+        _shouldCreatePlayer = true;
+        _status = 'Loading...';
+      });
+      await _ensureControllerCreated();
+      _controller!.play();
+    } else {
+      if (_status == 'Playing') {
+        _controller!.pause();
+      } else {
+        _controller!.play();
+      }
+    }
+  }
+
+  void _handleActivityEvent(PlayerActivityEvent event) {
     if (!mounted) return;
 
     setState(() {
-      switch (event.type) {
-        case NativeVideoPlayerEventType.play:
-          _status = 'Playing';
-          break;
-        case NativeVideoPlayerEventType.pause:
-          _status = 'Paused';
-          break;
-        case NativeVideoPlayerEventType.buffering:
-          _status = 'Buffering...';
-          break;
-        case NativeVideoPlayerEventType.completed:
-          _status = 'Completed';
-          break;
-        case NativeVideoPlayerEventType.videoLoaded:
-          // Video is loaded, get the duration
-          if (event.data != null) {
-            final duration = event.data!['duration'] as int?;
-            if (duration != null) {
-              _duration = Duration(milliseconds: duration);
-              debugPrint('VideoPlayerCard ${widget.video.id}: Duration loaded: ${_duration.inSeconds}s');
-            }
-          }
-          break;
-        case NativeVideoPlayerEventType.timeUpdate:
-          if (event.data != null) {
-            final position = event.data!['position'] as int?;
-            final duration = event.data!['duration'] as int?;
+      _status = _getStatusFromActivityState(event.state);
 
-            if (position != null) {
-              _currentPosition = Duration(milliseconds: position);
-            }
-            if (duration != null) {
-              _duration = Duration(milliseconds: duration);
-            }
+      // Handle loaded event
+      if (event.state == PlayerActivityState.loaded) {
+        if (event.data != null) {
+          final duration = event.data!['duration'] as int?;
+          if (duration != null) {
+            _duration = Duration(milliseconds: duration);
+            debugPrint('VideoPlayerCard ${widget.video.id}: Duration loaded: ${_duration.inSeconds}s');
           }
-          break;
-        case NativeVideoPlayerEventType.error:
-          _status = 'Error: ${event.data?['message'] ?? 'Unknown error'}';
-          debugPrint('VideoPlayerCard event error: ${event.data}');
-          break;
-        default:
-          break;
+        }
+      }
+
+      // Handle error
+      if (event.state == PlayerActivityState.error) {
+        _status = 'Error: ${event.data?['message'] ?? 'Unknown error'}';
+        debugPrint('VideoPlayerCard event error: ${event.data}');
       }
     });
+  }
+
+  void _handleControlEvent(PlayerControlEvent event) {
+    if (!mounted) return;
+
+    setState(() {
+      // Handle time update events
+      if (event.state == PlayerControlState.timeUpdated) {
+        if (event.data != null) {
+          final position = event.data!['position'] as int?;
+          final duration = event.data!['duration'] as int?;
+
+          if (position != null) {
+            _currentPosition = Duration(milliseconds: position);
+          }
+          if (duration != null) {
+            _duration = Duration(milliseconds: duration);
+          }
+        }
+      }
+    });
+  }
+
+  String _getStatusFromActivityState(PlayerActivityState state) {
+    switch (state) {
+      case PlayerActivityState.playing:
+        return 'Playing';
+      case PlayerActivityState.paused:
+        return 'Paused';
+      case PlayerActivityState.buffering:
+        return 'Buffering...';
+      case PlayerActivityState.completed:
+        return 'Completed';
+      case PlayerActivityState.loading:
+        return 'Loading...';
+      case PlayerActivityState.error:
+        return 'Error';
+      default:
+        return 'Ready';
+    }
   }
 
   String _formatDuration(Duration duration) {
@@ -110,19 +155,27 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> {
 
   @override
   void dispose() {
-    _controller.removeListener(_handlePlayerEvent);
-    _controller.dispose();
+    if (_controller != null) {
+      _controller!.removeActivityListener(_handleActivityEvent);
+      _controller!.removeControlListener(_handleControlEvent);
+      _controller!.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     return Card(
       elevation: 4,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
-        onTap: () => widget.onTap(_controller),
+        onTap: () {
+          if (_controller != null) {
+            widget.onTap(_controller!);
+          }
+        },
         borderRadius: BorderRadius.circular(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -136,46 +189,46 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> {
                     aspectRatio: 16 / 9,
                     child: Container(
                       color: Colors.black,
-                      child: NativeVideoPlayer(controller: _controller),
+                      child: (_shouldCreatePlayer && _controller != null)
+                          ? NativeVideoPlayer(controller: _controller!)
+                          : null,
                     ),
                   ),
-                  // Play/Pause Overlay
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black..withValues(alpha: 0.3),
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: 0.5),
-                          ],
+                  if (_controller == null)
+                    // Play/Pause Overlay
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black..withValues(alpha: 0.3),
+                              Colors.transparent,
+                              Colors.black.withValues(alpha: 0.5),
+                            ],
+                          ),
                         ),
-                      ),
-                      child: Center(
-                        child: Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.9), shape: BoxShape.circle),
-                          child: IconButton(
-                            icon: Icon(
-                              _status == 'Playing' ? Icons.pause : Icons.play_arrow,
-                              size: 36,
-                              color: Colors.black87,
+                        child: Center(
+                          child: Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              shape: BoxShape.circle,
                             ),
-                            onPressed: () {
-                              if (_status == 'Playing') {
-                                _controller.pause();
-                              } else {
-                                _controller.play();
-                              }
-                            },
+                            child: IconButton(
+                              icon: Icon(
+                                _status == 'Playing' ? Icons.pause : Icons.play_arrow,
+                                size: 24,
+                                color: Colors.black87,
+                              ),
+                              onPressed: _onPlayButtonPressed,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                   // Duration Badge
                   if (_duration.inSeconds > 0)
                     Positioned(

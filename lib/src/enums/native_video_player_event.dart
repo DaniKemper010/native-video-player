@@ -1,97 +1,123 @@
-enum NativeVideoPlayerEventType {
-  isInitialized,
-  videoLoaded,
-  play,
-  pause,
-  buffering,
+/// Player activity state representing playback status
+enum PlayerActivityState {
+  idle,
+  initializing,
+  initialized,
   loading,
+  loaded,
+  playing,
+  paused,
+  buffering,
   completed,
-  error,
-  qualityChange,
-  speedChange,
-  seek,
-  pipStart,
-  pipStop,
   stopped,
-  fullscreenChange,
-  timeUpdate,
+  error,
 }
 
-extension NativeVideoPlayerEventTypeExtension on NativeVideoPlayerEventType {
-  bool get isInitialized =>
-      this == NativeVideoPlayerEventType.isInitialized &&
-      this != NativeVideoPlayerEventType.error;
-
-  bool get isLoading => this == NativeVideoPlayerEventType.loading;
-
-  bool get isVideoLoaded => this == NativeVideoPlayerEventType.videoLoaded;
-
-  bool get isPlaying => this == NativeVideoPlayerEventType.play;
-
-  bool get isBuffering => this == NativeVideoPlayerEventType.buffering;
-
-  bool get isPaused => this == NativeVideoPlayerEventType.pause;
-
-  bool get hasError => this == NativeVideoPlayerEventType.error;
-
-  bool get isCompleted => this == NativeVideoPlayerEventType.completed;
-
-  bool get isFullscreenChange =>
-      this == NativeVideoPlayerEventType.fullscreenChange;
+/// Player control state for user interactions and settings
+enum PlayerControlState {
+  none,
+  qualityChanged,
+  speedChanged,
+  seeked,
+  pipStarted,
+  pipStopped,
+  fullscreenEntered,
+  fullscreenExited,
+  timeUpdated,
 }
 
-class NativeVideoPlayerEvent {
-  const NativeVideoPlayerEvent({required this.type, this.data});
+/// Activity state event for playback changes
+class PlayerActivityEvent {
+  const PlayerActivityEvent({required this.state, this.data});
 
-  factory NativeVideoPlayerEvent.fromMap(Map<dynamic, dynamic> map) {
+  factory PlayerActivityEvent.fromMap(Map<dynamic, dynamic> map) {
     final String eventName = map['event'] as String;
-    final NativeVideoPlayerEventType type = _eventTypeFromString(eventName);
+    final PlayerActivityState state = _stateFromString(eventName);
 
-    final Map<String, dynamic> data = Map<String, dynamic>.from(map)
-      ..remove('event');
+    final Map<String, dynamic> data = Map<String, dynamic>.from(map)..remove('event');
 
-    return NativeVideoPlayerEvent(type: type, data: data.isEmpty ? null : data);
+    return PlayerActivityEvent(state: state, data: data.isEmpty ? null : data);
   }
 
-  final NativeVideoPlayerEventType type;
+  final PlayerActivityState state;
   final Map<String, dynamic>? data;
 
-  static NativeVideoPlayerEventType _eventTypeFromString(String event) {
+  static PlayerActivityState _stateFromString(String event) {
     switch (event) {
       case 'isInitialized':
-        return NativeVideoPlayerEventType.isInitialized;
+        return PlayerActivityState.initialized;
       case 'videoLoaded':
-        return NativeVideoPlayerEventType.videoLoaded;
+        return PlayerActivityState.loaded;
       case 'play':
-        return NativeVideoPlayerEventType.play;
+        return PlayerActivityState.playing;
       case 'pause':
-        return NativeVideoPlayerEventType.pause;
+        return PlayerActivityState.paused;
       case 'buffering':
-        return NativeVideoPlayerEventType.buffering;
+        return PlayerActivityState.buffering;
       case 'loading':
-        return NativeVideoPlayerEventType.loading;
+        return PlayerActivityState.loading;
       case 'completed':
-        return NativeVideoPlayerEventType.completed;
-      case 'error':
-        return NativeVideoPlayerEventType.error;
-      case 'qualityChange':
-        return NativeVideoPlayerEventType.qualityChange;
-      case 'speedChange':
-        return NativeVideoPlayerEventType.speedChange;
-      case 'seek':
-        return NativeVideoPlayerEventType.seek;
-      case 'pipStart':
-        return NativeVideoPlayerEventType.pipStart;
-      case 'pipStop':
-        return NativeVideoPlayerEventType.pipStop;
+        return PlayerActivityState.completed;
       case 'stopped':
-        return NativeVideoPlayerEventType.stopped;
-      case 'fullscreenChange':
-        return NativeVideoPlayerEventType.fullscreenChange;
-      case 'timeUpdate':
-        return NativeVideoPlayerEventType.timeUpdate;
+        return PlayerActivityState.stopped;
+      case 'error':
+        return PlayerActivityState.error;
       default:
-        return NativeVideoPlayerEventType.error;
+        return PlayerActivityState.idle;
     }
   }
+}
+
+/// Control state event for user interactions and settings
+class PlayerControlEvent {
+  const PlayerControlEvent({required this.state, this.data});
+
+  factory PlayerControlEvent.fromMap(Map<dynamic, dynamic> map) {
+    final String eventName = map['event'] as String;
+    final PlayerControlState state = _stateFromString(eventName);
+
+    final Map<String, dynamic> data = Map<String, dynamic>.from(map)..remove('event');
+
+    return PlayerControlEvent(state: state, data: data.isEmpty ? null : data);
+  }
+
+  final PlayerControlState state;
+  final Map<String, dynamic>? data;
+
+  static PlayerControlState _stateFromString(String event) {
+    switch (event) {
+      case 'qualityChange':
+        return PlayerControlState.qualityChanged;
+      case 'speedChange':
+        return PlayerControlState.speedChanged;
+      case 'seek':
+        return PlayerControlState.seeked;
+      case 'pipStart':
+        return PlayerControlState.pipStarted;
+      case 'pipStop':
+        return PlayerControlState.pipStopped;
+      case 'fullscreenChange':
+        // Check if entering or exiting fullscreen from data
+        return PlayerControlState.fullscreenEntered;
+      case 'timeUpdate':
+        return PlayerControlState.timeUpdated;
+      default:
+        return PlayerControlState.none;
+    }
+  }
+}
+
+/// Extension methods for activity state
+extension PlayerActivityStateExtension on PlayerActivityState {
+  bool get isInitializing => this == PlayerActivityState.initializing;
+  bool get isInitialized => this == PlayerActivityState.initialized;
+  bool get isLoading => this == PlayerActivityState.loading;
+  bool get isLoaded => this == PlayerActivityState.loaded;
+  bool get isPlaying => this == PlayerActivityState.playing;
+  bool get isBuffering => this == PlayerActivityState.buffering;
+  bool get isPaused => this == PlayerActivityState.paused;
+  bool get hasError => this == PlayerActivityState.error;
+  bool get isCompleted => this == PlayerActivityState.completed;
+  bool get isStopped => this == PlayerActivityState.stopped;
+  bool get isIdle => this == PlayerActivityState.idle;
 }

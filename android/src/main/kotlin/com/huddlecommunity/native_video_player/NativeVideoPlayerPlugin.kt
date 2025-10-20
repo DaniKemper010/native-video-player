@@ -41,6 +41,12 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
         }
 
         fun getActivity(): Activity? = currentActivity
+
+        /**
+         * Get all registered video player views
+         * Used by MainActivity to trigger automatic PiP on user leave hint
+         */
+        fun getAllViews(): Collection<VideoPlayerView> = registeredViews.values
     }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
