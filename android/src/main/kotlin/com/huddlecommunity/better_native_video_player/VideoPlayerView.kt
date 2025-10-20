@@ -99,11 +99,19 @@ class VideoPlayerView(
         Log.d(TAG, "PiP settings - allows: $allowsPictureInPicture, autoStart: $canStartPictureInPictureAutomatically, showControls: $showNativeControlsOriginal")
 
         // Get or create shared player
+        val isSharedPlayer: Boolean
         player = if (controllerId != null) {
-            Log.d(TAG, "Using shared player for controller ID: $controllerId")
-            SharedPlayerManager.getOrCreatePlayer(context, controllerId)
+            val (sharedPlayer, alreadyExisted) = SharedPlayerManager.getOrCreatePlayer(context, controllerId)
+            isSharedPlayer = alreadyExisted
+            if (alreadyExisted) {
+                Log.d(TAG, "Using existing shared player for controller ID: $controllerId")
+            } else {
+                Log.d(TAG, "Creating new shared player for controller ID: $controllerId")
+            }
+            sharedPlayer
         } else {
             Log.d(TAG, "No controller ID provided, creating new player")
+            isSharedPlayer = false
             ExoPlayer.Builder(context).build()
         }
 
@@ -113,6 +121,11 @@ class VideoPlayerView(
             useController = args?.get("showNativeControls") as? Boolean ?: true
             controllerShowTimeoutMs = 5000
             controllerHideOnTouch = true
+
+            // Hide unnecessary buttons: settings, next, previous
+            setShowNextButton(false)
+            setShowPreviousButton(false)
+            // Note: There's no direct method to hide settings button, but we can hide it via layout
 
             // Configure PiP from args
             val allowsPiP = args?.get("allowsPictureInPicture") as? Boolean ?: true
@@ -144,8 +157,8 @@ class VideoPlayerView(
             }
         }
 
-        // Setup event handler
-        eventHandler = VideoPlayerEventHandler()
+        // Setup event handler (pass isSharedPlayer flag)
+        eventHandler = VideoPlayerEventHandler(isSharedPlayer = isSharedPlayer)
 
         // Setup notification handler (shared for shared players)
         notificationHandler = if (controllerId != null) {
@@ -168,6 +181,16 @@ class VideoPlayerView(
         // Setup observer
         observer = VideoPlayerObserver(player, eventHandler)
         player.addListener(observer)
+
+        // When connecting to a shared player, send the current playback state immediately
+        // This ensures the new view knows if the video is playing or paused
+        if (controllerId != null) {
+            if (player.isPlaying) {
+                eventHandler.sendEvent("play")
+            } else if (player.playbackState != ExoPlayer.STATE_IDLE) {
+                eventHandler.sendEvent("pause")
+            }
+        }
 
         // Setup method channel
         val channelName = "native_video_player"

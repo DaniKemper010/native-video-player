@@ -18,11 +18,14 @@ object SharedPlayerManager {
 
     /**
      * Gets or creates a player for the given controller ID
+     * Returns a Pair<ExoPlayer, Boolean> where the Boolean indicates if the player already existed (true) or was newly created (false)
      */
-    fun getOrCreatePlayer(context: Context, controllerId: Int): ExoPlayer {
-        return players.getOrPut(controllerId) {
+    fun getOrCreatePlayer(context: Context, controllerId: Int): Pair<ExoPlayer, Boolean> {
+        val alreadyExisted = players.containsKey(controllerId)
+        val player = players.getOrPut(controllerId) {
             ExoPlayer.Builder(context).build()
         }
+        return Pair(player, alreadyExisted)
     }
 
     /**

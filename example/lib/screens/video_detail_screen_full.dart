@@ -16,7 +16,7 @@ class VideoDetailScreenFull extends StatefulWidget {
 class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
   late NativeVideoPlayerController _controller;
   bool _ownsController = false;
-  String _status = 'Initializing...';
+  PlayerActivityState state = PlayerActivityState.idle;
   Duration _currentPosition = Duration.zero;
   Duration _duration = Duration.zero;
   Duration _bufferedPosition = Duration.zero;
@@ -36,14 +36,15 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
       _controller = widget.controller!;
       _ownsController = false;
 
+      // Add listeners FIRST before reading state
+      _controller.addActivityListener(_handleActivityEvent);
+      _controller.addControlListener(_handleControlEvent);
+
       // Do after frame to ensure widget is fully built
       WidgetsBinding.instance.addPostFrameCallback((_) {
         // Get current state from controller immediately
         _updateStateFromController();
       });
-
-      _controller.addActivityListener(_handleActivityEvent);
-      _controller.addControlListener(_handleControlEvent);
     } else {
       // Create a new controller
       _ownsController = true;
@@ -63,15 +64,15 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
 
   /// Updates all state variables from the current controller state
   void _updateStateFromController() {
+    if (!mounted) return;
+
     // Set initial status
     setState(() {
       _currentPosition = _controller.currentPosition;
       _duration = _controller.duration;
       _bufferedPosition = _controller.bufferedPosition;
       _qualities = _controller.qualities;
-      _currentPosition = _controller.currentPosition;
-      _duration = _controller.duration;
-      _status = _getStatusFromActivityState(_controller.activityState);
+      state = _controller.activityState;
     });
 
     // Check PiP availability after controller state is updated
@@ -96,7 +97,7 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
 
     if (mounted) {
       setState(() {
-        _status = 'Ready';
+        state = _controller.activityState;
       });
     }
   }
@@ -105,7 +106,7 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
     if (!mounted) return;
 
     setState(() {
-      _status = _getStatusFromActivityState(event.state);
+      state = event.state;
 
       // Handle buffering with buffered position
       if (event.state == PlayerActivityState.buffering) {
@@ -116,7 +117,8 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
 
       // Handle error
       if (event.state == PlayerActivityState.error) {
-        _status = 'Error: ${event.data?['message'] ?? 'Unknown error'}';
+        state = PlayerActivityState.error;
+        debugPrint('Video Player Error: ${event.data}');
       }
     });
 
@@ -190,27 +192,6 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
         _isInPipMode = false;
       }
     });
-  }
-
-  String _getStatusFromActivityState(PlayerActivityState state) {
-    switch (state) {
-      case PlayerActivityState.playing:
-        return 'Playing';
-      case PlayerActivityState.paused:
-        return 'Paused';
-      case PlayerActivityState.buffering:
-        return 'Buffering...';
-      case PlayerActivityState.completed:
-        return 'Completed';
-      case PlayerActivityState.loading:
-        return 'Loading...';
-      case PlayerActivityState.initializing:
-        return 'Initializing...';
-      case PlayerActivityState.error:
-        return 'Error';
-      default:
-        return 'Ready';
-    }
   }
 
   String _formatDuration(Duration duration) {
@@ -330,13 +311,10 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
                                       shape: BoxShape.circle,
                                     ),
                                     child: IconButton(
-                                      icon: Icon(
-                                        _status == 'Playing' ? Icons.pause : Icons.play_arrow,
-                                        color: Colors.white,
-                                      ),
+                                      icon: Icon(state.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
                                       iconSize: 36,
                                       onPressed: () {
-                                        if (_status == 'Playing') {
+                                        if (state.isPlaying) {
                                           _controller.pause();
                                         } else {
                                           _controller.play();
@@ -515,8 +493,6 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
                                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
                               ),
                               const SizedBox(height: 16),
-                              _buildStatRow('Status', _status, Icons.info_outline),
-                              const SizedBox(height: 12),
                               _buildStatRow('Duration', _formatDuration(_duration), Icons.access_time),
                               const SizedBox(height: 12),
                               _buildStatRow('Current Position', _formatDuration(_currentPosition), Icons.timer),

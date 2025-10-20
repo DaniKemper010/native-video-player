@@ -16,6 +16,7 @@ class VideoPlayerCard extends StatefulWidget {
 class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAliveClientMixin {
   NativeVideoPlayerController? _controller;
   String _status = 'Ready';
+  PlayerActivityState state = PlayerActivityState.idle;
   Duration _currentPosition = Duration.zero;
   Duration _duration = Duration.zero;
   bool _shouldCreatePlayer = false;
@@ -41,6 +42,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
         _currentPosition = _controller!.currentPosition;
         _duration = _controller!.duration;
         _status = _getStatusFromActivityState(_controller!.activityState);
+        state = _controller!.activityState;
       });
 
       await _loadVideo();
@@ -58,6 +60,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
       if (mounted) {
         setState(() {
           _status = 'Error: $e';
+          state = PlayerActivityState.error;
         });
       }
       debugPrint('VideoPlayerCard ${widget.video.id} init error: $e');
@@ -69,11 +72,12 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
       setState(() {
         _shouldCreatePlayer = true;
         _status = 'Loading...';
+        state = PlayerActivityState.loading;
       });
       await _ensureControllerCreated();
       _controller!.play();
     } else {
-      if (_status == 'Playing') {
+      if (state.isPlaying) {
         _controller!.pause();
       } else {
         _controller!.play();
@@ -86,6 +90,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
 
     setState(() {
       _status = _getStatusFromActivityState(event.state);
+      state = event.state;
 
       // Handle loaded event
       if (event.state == PlayerActivityState.loaded) {
@@ -166,6 +171,10 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
+
+    // Check if this is the current route (list is visible)
+    final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
+
     return Card(
       elevation: 4,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -189,7 +198,9 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                     aspectRatio: 16 / 9,
                     child: Container(
                       color: Colors.black,
-                      child: (_shouldCreatePlayer && _controller != null)
+                      // Only show the video player when this route is currently visible
+                      // This prevents having two NativeVideoPlayer widgets active simultaneously
+                      child: (_shouldCreatePlayer && _controller != null && isCurrentRoute)
                           ? NativeVideoPlayer(controller: _controller!)
                           : null,
                     ),
@@ -219,7 +230,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                             ),
                             child: IconButton(
                               icon: Icon(
-                                _status == 'Playing' ? Icons.pause : Icons.play_arrow,
+                                state.isPlaying ? Icons.pause : Icons.play_arrow,
                                 size: 24,
                                 color: Colors.black87,
                               ),
@@ -229,51 +240,9 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                         ),
                       ),
                     ),
-                  // Duration Badge
-                  if (_duration.inSeconds > 0)
-                    Positioned(
-                      right: 12,
-                      bottom: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(6)),
-                        child: Text(
-                          _formatDuration(_duration),
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ),
-                  // Status Badge
-                  Positioned(
-                    left: 12,
-                    top: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: _status == 'Playing'
-                            ? Colors.red
-                            : _status == 'Buffering...'
-                            ? Colors.orange
-                            : Colors.grey,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        _status,
-                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
-
-            // Progress Bar
-            if (_duration.inSeconds > 0)
-              LinearProgressIndicator(
-                value: _duration.inMilliseconds > 0 ? _currentPosition.inMilliseconds / _duration.inMilliseconds : 0,
-                backgroundColor: Colors.grey[300],
-                minHeight: 3,
-              ),
 
             // Video Info
             Padding(
@@ -281,11 +250,31 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.video.title,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    spacing: 8,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: state.isPlaying
+                              ? Colors.red
+                              : _status == 'Buffering...'
+                              ? Colors.orange
+                              : Colors.grey,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _status,
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Text(
+                        widget.video.title,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Text(

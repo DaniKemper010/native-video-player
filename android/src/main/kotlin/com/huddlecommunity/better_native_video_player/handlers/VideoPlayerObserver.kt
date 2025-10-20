@@ -77,11 +77,16 @@ class VideoPlayerObserver(
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
-        Log.d(TAG, "Is playing changed: $isPlaying")
+        Log.d(TAG, "Is playing changed: $isPlaying, playbackState: ${player.playbackState}")
         if (isPlaying) {
             eventHandler.sendEvent("play")
         } else {
-            eventHandler.sendEvent("pause")
+            // Only send pause event if not buffering
+            // When seeking to unbuffered position, isPlaying becomes false but player is buffering
+            // We should not report this as a pause - the buffering event will be sent instead
+            if (player.playbackState != Player.STATE_BUFFERING) {
+                eventHandler.sendEvent("pause")
+            }
         }
     }
 

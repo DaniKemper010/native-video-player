@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-01-16
+
+### Fixed
+- Fixed iOS player state tracking by observing `timeControlStatus` instead of relying only on item observers
+- Fixed shared player initialization to properly handle existing players vs new players
+- Fixed Android PiP event channel setup to only initialize on Android platform (prevents iOS errors)
+- Fixed playback state synchronization when connecting to shared players
+- Fixed unnecessary buffering/loading events for shared players during reattachment
+
+### Improved
+- Enhanced iOS player observer to distinguish between play/pause and buffering states
+- Improved shared player management with better state tracking and event handling
+- Enhanced Android player controls by hiding unnecessary buttons (next, previous, settings)
+- Better error handling and logging throughout the player lifecycle
+
 ## [0.1.1] - 2025-10-20
 
 ### Fixed

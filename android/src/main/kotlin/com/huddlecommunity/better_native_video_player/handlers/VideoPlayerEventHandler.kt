@@ -6,13 +6,16 @@ import io.flutter.plugin.common.EventChannel
  * Handles sending events from native Android to Flutter via EventChannel
  * Equivalent to iOS VideoPlayerEventHandler
  */
-class VideoPlayerEventHandler : EventChannel.StreamHandler {
+class VideoPlayerEventHandler(private val isSharedPlayer: Boolean = false) : EventChannel.StreamHandler {
     private var eventSink: EventChannel.EventSink? = null
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
         eventSink = events
-        // Send initial event when EventChannel is connected
-        sendEvent("isInitialized")
+        // Only send isInitialized event for new players, not for shared players
+        // Shared players will send their current playback state instead
+        if (!isSharedPlayer) {
+            sendEvent("isInitialized")
+        }
     }
 
     override fun onCancel(arguments: Any?) {

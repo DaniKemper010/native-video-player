@@ -13,14 +13,15 @@ class SharedPlayerManager {
     private init() {}
 
     /// Gets or creates a player for the given controller ID
-    func getOrCreatePlayer(for controllerId: Int) -> AVPlayer {
+    /// Returns a tuple (AVPlayer, Bool) where the Bool indicates if the player already existed (true) or was newly created (false)
+    func getOrCreatePlayer(for controllerId: Int) -> (AVPlayer, Bool) {
         if let existingPlayer = players[controllerId] {
-            return existingPlayer
+            return (existingPlayer, true)
         }
 
         let newPlayer = AVPlayer()
         players[controllerId] = newPlayer
-        return newPlayer
+        return (newPlayer, false)
     }
 
     /// Removes a player (called when explicitly disposed)

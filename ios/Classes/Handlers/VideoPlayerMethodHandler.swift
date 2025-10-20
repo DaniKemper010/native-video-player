@@ -69,6 +69,9 @@ extension VideoPlayerView {
 
         player?.replaceCurrentItem(with: playerItem)
 
+        // --- Set up observers for buffer status and player state ---
+        addObservers(to: playerItem)
+
         // --- Set up periodic time observer for Now Playing elapsed time updates ---
         setupPeriodicTimeObserver()
 
@@ -129,7 +132,7 @@ extension VideoPlayerView {
                 // Auto play if requested
                 if autoPlay {
                     self.player?.play()
-                    self.sendEvent("play")
+                    // Play event will be sent automatically by timeControlStatus observer
                 }
 
                 // Release observer (avoid leaks)
@@ -155,14 +158,14 @@ extension VideoPlayerView {
         try? AVAudioSession.sharedInstance().setActive(true)
         player?.play()
         updateNowPlayingPlaybackTime()
-        sendEvent("play")
+        // Play event will be sent automatically by timeControlStatus observer
         result(nil)
     }
 
     func handlePause(result: @escaping FlutterResult) {
         player?.pause()
         updateNowPlayingPlaybackTime()
-        sendEvent("pause")
+        // Pause event will be sent automatically by timeControlStatus observer
         result(nil)
     }
 

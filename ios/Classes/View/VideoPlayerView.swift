@@ -27,6 +27,9 @@ import QuartzCore
     var currentMediaInfo: [String: Any]?
     var timeObserver: Any?
 
+    // Track if this is a shared player (to avoid sending duplicate initialization events)
+    var isSharedPlayer: Bool = false
+
     public init(
         frame: CGRect,
         viewIdentifier viewId: Int64,
@@ -47,10 +50,17 @@ import QuartzCore
         if let args = args as? [String: Any],
            let controllerIdValue = args["controllerId"] as? Int {
             controllerId = controllerIdValue
-            print("Using shared player for controller ID: \(controllerIdValue)")
 
             // Get or create shared player (but new view controller each time)
-            player = SharedPlayerManager.shared.getOrCreatePlayer(for: controllerIdValue)
+            let (sharedPlayer, alreadyExisted) = SharedPlayerManager.shared.getOrCreatePlayer(for: controllerIdValue)
+            player = sharedPlayer
+            isSharedPlayer = alreadyExisted
+
+            if alreadyExisted {
+                print("Using existing shared player for controller ID: \(controllerIdValue)")
+            } else {
+                print("Creating new shared player for controller ID: \(controllerIdValue)")
+            }
         } else {
             // Fallback: create new instances if no controller ID provided
             print("No controller ID provided, creating new player")
@@ -104,9 +114,14 @@ import QuartzCore
             binaryMessenger: messenger
         )
         eventChannel.setStreamHandler(self)
-        
-        // Send initialization event to signal that everything is set up
-        sendEvent("isInitialized")
+
+        // Set up observers for shared players if there's already a loaded video
+        // The initial state event will be sent when onListen is called
+        if isSharedPlayer, let currentItem = player?.currentItem {
+            addObservers(to: currentItem)
+            // Also set up periodic time observer for this new view
+            setupPeriodicTimeObserver()
+        }
     }
 
     public func view() -> UIView {
@@ -157,6 +172,50 @@ import QuartzCore
         eventSink?(event)
     }
 
+    // MARK: - FlutterStreamHandler
+    public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+        print("[\(channelName)] Event channel listener attached")
+        self.eventSink = events
+
+        // Send initial state event when listener is attached
+        if isSharedPlayer {
+            // For shared players, only send current playback state and position
+            if let player = player, let currentItem = player.currentItem {
+                // Send current position
+                let duration = Int(CMTimeGetSeconds(currentItem.duration) * 1000)
+                let position = Int(CMTimeGetSeconds(player.currentTime()) * 1000)
+                sendEvent("timeUpdated", data: ["position": position, "duration": duration])
+                
+                // Send current playback state
+                switch player.timeControlStatus {
+                case .playing:
+                    print("[\(channelName)] Sending play event to new listener")
+                    sendEvent("play")
+                case .paused:
+                    print("[\(channelName)] Sending pause event to new listener")
+                    sendEvent("pause")
+                case .waitingToPlayAtSpecifiedRate:
+                    print("[\(channelName)] Sending buffering event to new listener")
+                    sendEvent("buffering")
+                @unknown default:
+                    break
+                }
+            }
+        } else {
+            // For new players, send isInitialized event
+            print("[\(channelName)] Sending isInitialized event to new listener")
+            sendEvent("isInitialized")
+        }
+
+        return nil
+    }
+
+    public func onCancel(withArguments arguments: Any?) -> FlutterError? {
+        print("[\(channelName)] Event channel listener detached")
+        self.eventSink = nil
+        return nil
+    }
+
     deinit {
         print("VideoPlayerView deinit for channel: \(channelName)")
 
@@ -173,6 +232,10 @@ import QuartzCore
             item.removeObserver(self, forKeyPath: "playbackBufferEmpty")
             item.removeObserver(self, forKeyPath: "playbackLikelyToKeepUp")
         }
+
+        // Remove player observer for timeControlStatus
+        player?.removeObserver(self, forKeyPath: "timeControlStatus")
+
         NotificationCenter.default.removeObserver(self)
         methodChannel.setMethodCallHandler(nil)
 

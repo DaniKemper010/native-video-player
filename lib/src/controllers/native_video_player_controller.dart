@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -287,8 +288,17 @@ class NativeVideoPlayerController {
       return;
     }
 
+    _pipEventListenerSetup = true;
+
+    // Only set up the PiP event channel on Android
+    // iOS doesn't have this channel and doesn't need it
+    if (!Platform.isAndroid) {
+      return;
+    }
+
     try {
       final EventChannel pipEventChannel = const EventChannel('native_video_player_pip_events');
+
       _pipEventSubscription = pipEventChannel.receiveBroadcastStream().listen(
         (dynamic eventMap) {
           final map = eventMap as Map<dynamic, dynamic>;
@@ -322,11 +332,9 @@ class NativeVideoPlayerController {
           debugPrint('MainActivity PiP event channel error: $error');
         },
       );
-
-      _pipEventListenerSetup = true;
     } catch (e) {
-      // EventChannel not available (likely iOS)
-      debugPrint('MainActivity PiP event channel not available (expected on iOS): $e');
+      // Log any errors during setup
+      debugPrint('Error setting up MainActivity PiP event channel: $e');
     }
   }
 
