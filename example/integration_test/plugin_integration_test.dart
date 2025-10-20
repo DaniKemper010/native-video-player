@@ -6,11 +6,10 @@
 // For more information about Flutter integration tests, please see
 // https://flutter.dev/to/integration-testing
 
+import 'package:better_native_video_player/better_native_video_player.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:native_video_player/native_video_player.dart';
-import 'package:native_video_player/src/models/native_video_player_media_info.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -45,9 +44,7 @@ void main() {
 
     // Initialize and load video
     await controller.initialize();
-    await controller.load(
-      url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    );
+    await controller.load(url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
 
     // Wait for video to load
     await tester.pumpAndSettle();
@@ -100,9 +97,7 @@ void main() {
 
     // Initialize and load video
     await controller.initialize();
-    await controller.load(
-      url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    );
+    await controller.load(url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
 
     await tester.pumpAndSettle();
 
@@ -160,9 +155,7 @@ void main() {
 
     // Initialize and load video
     await controller.initialize();
-    await controller.load(
-      url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    );
+    await controller.load(url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
 
     await tester.pumpAndSettle();
 
@@ -173,9 +166,6 @@ void main() {
     // Note: We can't actually test PiP mode in integration tests
     // as it requires user interaction, but we can verify the setup
     expect(controller.creationParams['allowsPictureInPicture'], isTrue);
-    expect(
-      controller.creationParams['canStartPictureInPictureAutomatically'],
-      isTrue,
-    );
+    expect(controller.creationParams['canStartPictureInPictureAutomatically'], isTrue);
   });
 }

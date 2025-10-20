@@ -1,8 +1,7 @@
+import 'package:better_native_video_player/better_native_video_player.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:better_native_video_player/better_native_video_player.dart';
-import 'package:better_native_video_player/src/models/native_video_player_media_info.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
