@@ -1,4 +1,4 @@
-package com.huddlecommunity.native_video_player
+package com.huddlecommunity.better_native_video_player
 
 import android.app.Activity
 import android.app.Dialog

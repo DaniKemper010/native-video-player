@@ -1,4 +1,4 @@
-package com.huddlecommunity.native_video_player.handlers
+package com.huddlecommunity.better_native_video_player.handlers
 
 import io.flutter.plugin.common.EventChannel
 

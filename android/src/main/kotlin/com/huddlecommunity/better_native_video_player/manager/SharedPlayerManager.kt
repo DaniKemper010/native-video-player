@@ -1,4 +1,4 @@
-package com.huddlecommunity.native_video_player.manager
+package com.huddlecommunity.better_native_video_player.manager
 
 import android.content.Context
 import android.content.Intent

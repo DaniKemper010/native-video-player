@@ -1,4 +1,4 @@
-package com.huddlecommunity.native_video_player.handlers
+package com.huddlecommunity.better_native_video_player.handlers
 
 import android.app.Notification
 import android.app.NotificationChannel
