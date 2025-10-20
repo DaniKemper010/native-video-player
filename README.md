@@ -6,13 +6,16 @@ A Flutter plugin for native video playback on iOS and Android with advanced feat
 
 - ✅ Native video players: **AVPlayerViewController** on iOS and **ExoPlayer (Media3)** on Android
 - ✅ **HLS streaming** support with adaptive quality selection
-- ✅ **Picture-in-Picture (PiP)** mode on both platforms
+- ✅ **Picture-in-Picture (PiP)** mode on both platforms with automatic state management
 - ✅ Native **fullscreen** playback
 - ✅ **Now Playing** integration (Control Center on iOS, lock screen notifications on Android)
 - ✅ Background playback with media notifications
 - ✅ Playback controls: play, pause, seek, volume, speed
 - ✅ Quality selection for HLS streams
-- ✅ Event streaming for player state changes
+- ✅ **Separated event streams**: Activity events (play/pause/buffering) and Control events (quality/speed/PiP/fullscreen)
+- ✅ Real-time playback position tracking with buffered position
+- ✅ Custom HTTP headers support for video requests
+- ✅ Multiple controller instances support
 
 ## Platform Support
 
@@ -180,32 +183,165 @@ if (qualities.isNotEmpty) {
 }
 ```
 
-#### Event Handling
+#### Separated Event Handling
 
+The plugin separates events into two categories for better control:
+
+**Activity Events** - Playback state changes:
 ```dart
-void _handlePlayerEvent(NativeVideoPlayerEvent event) {
-  switch (event.type) {
-    case NativeVideoPlayerEventType.play:
+@override
+void initState() {
+  super.initState();
+  _controller.addActivityListener(_handleActivityEvent);
+  _controller.addControlListener(_handleControlEvent);
+}
+
+void _handleActivityEvent(PlayerActivityEvent event) {
+  switch (event.state) {
+    case PlayerActivityState.playing:
       print('Playing');
       break;
-    case NativeVideoPlayerEventType.pause:
+    case PlayerActivityState.paused:
       print('Paused');
       break;
-    case NativeVideoPlayerEventType.buffering:
-      print('Buffering');
+    case PlayerActivityState.buffering:
+      final buffered = event.data?['buffered'] as int?;
+      print('Buffering... buffered position: $buffered ms');
       break;
-    case NativeVideoPlayerEventType.completed:
+    case PlayerActivityState.completed:
       print('Playback completed');
       break;
-    case NativeVideoPlayerEventType.error:
+    case PlayerActivityState.error:
       print('Error: ${event.data?['message']}');
-      break;
-    case NativeVideoPlayerEventType.fullscreenChange:
-      final isFullscreen = event.data?['isFullscreen'] as bool;
-      print('Fullscreen: $isFullscreen');
       break;
     default:
       break;
+  }
+}
+```
+
+**Control Events** - User interactions and settings:
+```dart
+void _handleControlEvent(PlayerControlEvent event) {
+  switch (event.state) {
+    case PlayerControlState.timeUpdated:
+      final position = event.data?['position'] as int?;
+      final duration = event.data?['duration'] as int?;
+      final bufferedPosition = event.data?['bufferedPosition'] as int?;
+      print('Position: $position ms / $duration ms (buffered: $bufferedPosition ms)');
+      break;
+    case PlayerControlState.qualityChanged:
+      final quality = event.data?['quality'];
+      print('Quality changed: $quality');
+      break;
+    case PlayerControlState.pipStarted:
+      print('PiP mode started');
+      break;
+    case PlayerControlState.pipStopped:
+      print('PiP mode stopped');
+      break;
+    case PlayerControlState.fullscreenEntered:
+      print('Entered fullscreen');
+      break;
+    case PlayerControlState.fullscreenExited:
+      print('Exited fullscreen');
+      break;
+    default:
+      break;
+  }
+}
+
+@override
+void dispose() {
+  _controller.removeActivityListener(_handleActivityEvent);
+  _controller.removeControlListener(_handleControlEvent);
+  _controller.dispose();
+  super.dispose();
+}
+```
+
+#### Custom HTTP Headers
+
+```dart
+await _controller.load(
+  url: 'https://example.com/video.m3u8',
+  headers: {
+    'Referer': 'https://example.com',
+    'Authorization': 'Bearer token',
+  },
+);
+```
+
+#### Picture-in-Picture Mode
+
+```dart
+// Check if PiP is available on the device
+final isPipAvailable = await _controller.isPictureInPictureAvailable();
+
+if (isPipAvailable) {
+  // Enter PiP mode
+  await _controller.enterPictureInPicture();
+
+  // Exit PiP mode
+  await _controller.exitPictureInPicture();
+}
+
+// Listen for PiP state changes
+_controller.addControlListener((event) {
+  if (event.state == PlayerControlState.pipStarted) {
+    print('Entered PiP mode');
+  } else if (event.state == PlayerControlState.pipStopped) {
+    print('Exited PiP mode');
+  }
+});
+```
+
+#### Multiple Video Players
+
+```dart
+class MultiPlayerScreen extends StatefulWidget {
+  @override
+  State<MultiPlayerScreen> createState() => _MultiPlayerScreenState();
+}
+
+class _MultiPlayerScreenState extends State<MultiPlayerScreen> {
+  late NativeVideoPlayerController _controller1;
+  late NativeVideoPlayerController _controller2;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Create multiple controllers with unique IDs
+    _controller1 = NativeVideoPlayerController(id: 1, autoPlay: false);
+    _controller2 = NativeVideoPlayerController(id: 2, autoPlay: false);
+
+    _initializePlayers();
+  }
+
+  Future<void> _initializePlayers() async {
+    await _controller1.initialize();
+    await _controller2.initialize();
+
+    await _controller1.load(url: 'https://example.com/video1.m3u8');
+    await _controller2.load(url: 'https://example.com/video2.m3u8');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(child: NativeVideoPlayer(controller: _controller1)),
+        Expanded(child: NativeVideoPlayer(controller: _controller2)),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller1.dispose();
+    _controller2.dispose();
+    super.dispose();
   }
 }
 ```
@@ -228,41 +364,66 @@ void _handlePlayerEvent(NativeVideoPlayerEvent event) {
 #### Methods
 
 - `Future<void> initialize()` - Initialize the controller
-- `Future<void> load({required String url, Map<String, String>? headers})` - Load video URL
+- `Future<void> load({required String url, Map<String, String>? headers})` - Load video URL with optional HTTP headers
 - `Future<void> play()` - Start playback
 - `Future<void> pause()` - Pause playback
 - `Future<void> seekTo(Duration position)` - Seek to position
 - `Future<void> setVolume(double volume)` - Set volume (0.0-1.0)
 - `Future<void> setSpeed(double speed)` - Set playback speed
 - `Future<void> setQuality(NativeVideoPlayerQuality quality)` - Set video quality
+- `Future<bool> isPictureInPictureAvailable()` - Check if PiP is available on device
+- `Future<bool> enterPictureInPicture()` - Enter Picture-in-Picture mode
+- `Future<bool> exitPictureInPicture()` - Exit Picture-in-Picture mode
 - `Future<void> enterFullScreen()` - Enter fullscreen
 - `Future<void> exitFullScreen()` - Exit fullscreen
 - `Future<void> toggleFullScreen()` - Toggle fullscreen
+- `void addActivityListener(void Function(PlayerActivityEvent) listener)` - Add activity event listener
+- `void removeActivityListener(void Function(PlayerActivityEvent) listener)` - Remove activity event listener
+- `void addControlListener(void Function(PlayerControlEvent) listener)` - Add control event listener
+- `void removeControlListener(void Function(PlayerControlEvent) listener)` - Remove control event listener
 - `Future<void> dispose()` - Clean up resources
 
 #### Properties
 
 - `List<NativeVideoPlayerQuality> qualities` - Available HLS quality variants
 - `bool isFullScreen` - Current fullscreen state
-- `bool isLoaded` - Whether video is loaded
+- `Duration currentPosition` - Current playback position
+- `Duration duration` - Total video duration
+- `Duration bufferedPosition` - How far the video has been buffered
+- `double volume` - Current volume (0.0-1.0)
+- `PlayerActivityState activityState` - Current activity state
+- `PlayerControlState controlState` - Current control state
 - `String? url` - Current video URL
 
-### Event Types
+### Activity Event States
 
-- `isInitialized` - Controller initialized
-- `videoLoaded` - Video loaded successfully
-- `play` - Playback started
-- `pause` - Playback paused
-- `buffering` - Buffering in progress
-- `loading` - Loading content
-- `completed` - Playback completed
-- `error` - Error occurred
-- `qualityChange` - Quality changed
-- `speedChange` - Speed changed
-- `seek` - Seek completed
-- `pipStart` - PiP started
-- `pipStop` - PiP stopped
-- `fullscreenChange` - Fullscreen state changed
+| State | Description |
+|-------|-------------|
+| `PlayerActivityState.idle` | Player is idle |
+| `PlayerActivityState.initializing` | Player is initializing |
+| `PlayerActivityState.initialized` | Player initialized |
+| `PlayerActivityState.loading` | Video is loading |
+| `PlayerActivityState.loaded` | Video loaded successfully |
+| `PlayerActivityState.playing` | Playback is active |
+| `PlayerActivityState.paused` | Playback is paused |
+| `PlayerActivityState.buffering` | Video is buffering |
+| `PlayerActivityState.completed` | Playback completed |
+| `PlayerActivityState.stopped` | Playback stopped |
+| `PlayerActivityState.error` | Error occurred |
+
+### Control Event States
+
+| State | Description |
+|-------|-------------|
+| `PlayerControlState.none` | No control event |
+| `PlayerControlState.qualityChanged` | Video quality changed |
+| `PlayerControlState.speedChanged` | Playback speed changed |
+| `PlayerControlState.seeked` | Seek operation completed |
+| `PlayerControlState.pipStarted` | PiP mode started |
+| `PlayerControlState.pipStopped` | PiP mode stopped |
+| `PlayerControlState.fullscreenEntered` | Fullscreen entered |
+| `PlayerControlState.fullscreenExited` | Fullscreen exited |
+| `PlayerControlState.timeUpdated` | Playback time updated |
 
 ## Architecture
 
@@ -282,34 +443,180 @@ void _handlePlayerEvent(NativeVideoPlayerEvent event) {
 
 ## Troubleshooting
 
+### Common Issues
+
+**Controller not initializing:**
+```dart
+// Always call initialize() before load()
+await _controller.initialize();
+await _controller.load(url: 'https://example.com/video.m3u8');
+```
+
+**Events not firing:**
+```dart
+// Make sure to add listeners BEFORE calling initialize()
+_controller.addActivityListener(_handleActivityEvent);
+_controller.addControlListener(_handleControlEvent);
+await _controller.initialize();
+```
+
+**Multiple controllers interfering:**
+```dart
+// Ensure each controller has a unique ID
+final controller1 = NativeVideoPlayerController(id: 1);
+final controller2 = NativeVideoPlayerController(id: 2);
+```
+
+**Memory leaks:**
+```dart
+// Always remove listeners and dispose controllers
+@override
+void dispose() {
+  _controller.removeActivityListener(_handleActivityEvent);
+  _controller.removeControlListener(_handleControlEvent);
+  _controller.dispose();
+  super.dispose();
+}
+```
+
 ### iOS
 
 **Video doesn't play:**
-- Check `Info.plist` has `NSAppTransportSecurity` configured
+- Ensure `Info.plist` has `NSAppTransportSecurity` configured for HTTP videos
+- For HTTPS with self-signed certificates, add exception domains
 - For local files, ensure proper file access permissions
+- Check that the video format is supported by AVPlayer (HLS, MP4, MOV)
 
 **PiP not working:**
-- Enable Background Modes in Xcode capabilities
-- Ensure iOS version is 14.0+
+- Enable Background Modes in Xcode: Target → Signing & Capabilities → Background Modes
+- Check "Audio, AirPlay, and Picture in Picture"
+- Ensure iOS version is 14.0+ (check with `await controller.isPictureInPictureAvailable()`)
+- PiP requires video to be playing before entering PiP mode
+- Some simulators don't support PiP; test on a physical device
+
+**Now Playing not showing:**
+```dart
+// Provide mediaInfo when creating the controller
+_controller = NativeVideoPlayerController(
+  id: 1,
+  mediaInfo: const NativeVideoPlayerMediaInfo(
+    title: 'Video Title',
+    subtitle: 'Artist Name',
+  ),
+);
+```
+
+**Background audio stops:**
+- Verify Background Modes are enabled in Xcode capabilities
+- Ensure "Audio, AirPlay, and Picture in Picture" is checked
 
 ### Android
 
 **Video doesn't play:**
-- Check internet permissions in your app's `AndroidManifest.xml`
-- Ensure minimum SDK version is 24+
+- Check internet permissions in your app's `AndroidManifest.xml`:
+```xml
+<uses-permission android:name="android.permission.INTERNET" />
+```
+- Ensure minimum SDK version is 24+ in `build.gradle`:
+```gradle
+minSdkVersion 24
+```
+- For HTTPS issues, check your network security configuration
+- Verify ExoPlayer supports the video format (HLS, MP4, WebM)
+
+**PiP not working:**
+- PiP requires Android 8.0+ (API 26+)
+- Check device support: `await controller.isPictureInPictureAvailable()`
+- Ensure your `AndroidManifest.xml` has the activity configured:
+```xml
+<activity
+    android:name=".MainActivity"
+    android:supportsPictureInPicture="true"
+    android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation">
+</activity>
+```
+- PiP events are automatically handled by the MainActivity
+- Listen for PiP state changes using `PlayerControlState.pipStarted` and `PlayerControlState.pipStopped`
 
 **Fullscreen issues:**
-- The plugin handles fullscreen natively with a Dialog
+- The plugin handles fullscreen natively using a Dialog on Android
+- Fullscreen works automatically; no additional configuration needed
 - Ensure proper activity lifecycle management
+- If orientation is locked, fullscreen may not rotate automatically
+
+**Media notifications not showing:**
+- The plugin automatically configures `MediaSessionService`
+- Ensure foreground service permissions are granted (handled automatically)
+- Media info must be provided via `mediaInfo` parameter
+- Notifications appear when video is playing in background
+
+**ExoPlayer errors:**
+- Check logcat for detailed error messages
+- Common issues:
+  - Network timeouts: Check internet connectivity
+  - Unsupported format: Verify video codec compatibility
+  - DRM content: This plugin doesn't support DRM (yet)
+
+### General Debugging
+
+**Enable verbose logging:**
+```dart
+// Check player state
+print('Activity State: ${_controller.activityState}');
+print('Control State: ${_controller.controlState}');
+print('Is Fullscreen: ${_controller.isFullScreen}');
+print('Current Position: ${_controller.currentPosition}');
+print('Duration: ${_controller.duration}');
+```
+
+**Test with known working URLs:**
+```dart
+// Apple's test HLS stream
+const testUrl = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+
+// Big Buck Bunny
+const testUrl = 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+```
+
+**Platform-specific issues:**
+```dart
+import 'dart:io';
+
+if (Platform.isIOS) {
+  // iOS-specific code
+} else if (Platform.isAndroid) {
+  // Android-specific code
+}
+```
 
 ## Example App
 
-See the `example` folder for a complete working example with:
-- Basic playback
-- Playback controls
-- Speed adjustment
-- Fullscreen toggle
-- Event handling
+See the `example` folder for a complete working example demonstrating:
+
+### Features Demonstrated
+- **Video List with Inline Players**: Multiple video players in a scrollable list
+- **Full-Screen Video Detail Page**: Dedicated page with comprehensive controls
+- **Playback Controls**: Play, pause, seek (±10 seconds), volume control
+- **Speed Adjustment**: 0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 2.0x playback speeds
+- **Quality Selection**: Automatic quality detection and manual selection for HLS streams
+- **Picture-in-Picture**: Enter/exit PiP mode with state tracking
+- **Fullscreen Toggle**: Native fullscreen support on both platforms
+- **Real-time Statistics**: Current position, duration, buffered position tracking
+- **Separated Event Handling**: Activity and control events with detailed logging
+- **Custom Media Info**: Now Playing integration with metadata
+
+### Running the Example
+
+```bash
+cd example
+flutter run
+```
+
+The example includes:
+- `video_list_screen_with_players.dart` - Multiple inline video players
+- `video_detail_screen_full.dart` - Full-featured video player with controls
+- `video_player_card.dart` - Reusable video player widget
+- `video_item.dart` - Video model with sample HLS streams
 
 ## License
 
