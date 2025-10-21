@@ -51,7 +51,9 @@ class NativeVideoPlayerController {
     // Wait for the platform view to be created
     await _initializeCompleter!.future;
 
-    _updateState(_state.copyWith(activityState: PlayerActivityState.initialized));
+    _updateState(
+      _state.copyWith(activityState: PlayerActivityState.initialized),
+    );
   }
 
   /// Unique identifier for this video player instance
@@ -118,29 +120,35 @@ class NativeVideoPlayerController {
   /// Updates the method channel to use the specified platform view ID
   void _updateMethodChannel(int platformViewId) {
     _primaryPlatformViewId = platformViewId;
-    _methodChannel = VideoPlayerMethodChannel(primaryPlatformViewId: platformViewId);
+    _methodChannel = VideoPlayerMethodChannel(
+      primaryPlatformViewId: platformViewId,
+    );
   }
 
   /// Completer to wait for initialization to complete
   Completer<void>? _initializeCompleter;
 
   /// Event channel subscriptions for each platform view
-  final Map<int, StreamSubscription<dynamic>> _eventSubscriptions = <int, StreamSubscription<dynamic>>{};
+  final Map<int, StreamSubscription<dynamic>> _eventSubscriptions =
+      <int, StreamSubscription<dynamic>>{};
 
   /// MainActivity PiP event channel subscription (Android only)
   StreamSubscription<dynamic>? _pipEventSubscription;
 
   /// MainActivity PiP event channel subscription (Android only)
-  StreamSubscription<dynamic>? get pipEventSubscription => _pipEventSubscription;
+  StreamSubscription<dynamic>? get pipEventSubscription =>
+      _pipEventSubscription;
 
   /// Whether the MainActivity PiP event listener has been set up
   static bool _pipEventListenerSetup = false;
 
   /// Activity event handlers (play, pause, buffering, etc.)
-  final List<void Function(PlayerActivityEvent)> _activityEventHandlers = <void Function(PlayerActivityEvent)>[];
+  final List<void Function(PlayerActivityEvent)> _activityEventHandlers =
+      <void Function(PlayerActivityEvent)>[];
 
   /// Control event handlers (quality, speed, pip, fullscreen, etc.)
-  final List<void Function(PlayerControlEvent)> _controlEventHandlers = <void Function(PlayerControlEvent)>[];
+  final List<void Function(PlayerControlEvent)> _controlEventHandlers =
+      <void Function(PlayerControlEvent)>[];
 
   /// Updates the internal state
   void _updateState(NativeVideoPlayerState newState) => _state = newState;
@@ -153,7 +161,8 @@ class NativeVideoPlayerController {
   }
 
   /// Removes a listener for activity events
-  void removeActivityListener(void Function(PlayerActivityEvent) listener) => _activityEventHandlers.remove(listener);
+  void removeActivityListener(void Function(PlayerActivityEvent) listener) =>
+      _activityEventHandlers.remove(listener);
 
   /// Adds a listener for control events (quality, speed, pip, fullscreen, etc.)
   void addControlListener(void Function(PlayerControlEvent) listener) {
@@ -163,7 +172,8 @@ class NativeVideoPlayerController {
   }
 
   /// Removes a listener for control events
-  void removeControlListener(void Function(PlayerControlEvent) listener) => _controlEventHandlers.remove(listener);
+  void removeControlListener(void Function(PlayerControlEvent) listener) =>
+      _controlEventHandlers.remove(listener);
 
   /// Video URL to play (supports HLS .m3u8 and direct video URLs)
   /// Returns null if load() has not been called yet
@@ -202,8 +212,10 @@ class NativeVideoPlayerController {
     'controllerId': id,
     'autoPlay': autoPlay,
     'allowsPictureInPicture': allowsPictureInPicture,
-    'canStartPictureInPictureAutomatically': canStartPictureInPictureAutomatically,
-    'showNativeControls': !_hasCustomOverlay, // Hide native controls if we have custom overlay
+    'canStartPictureInPictureAutomatically':
+        canStartPictureInPictureAutomatically,
+    'showNativeControls':
+        !_hasCustomOverlay, // Hide native controls if we have custom overlay
     'isFullScreen': _state.isFullScreen,
     if (mediaInfo != null) 'mediaInfo': mediaInfo!.toMap(),
   };
@@ -212,7 +224,9 @@ class NativeVideoPlayerController {
   ///
   /// This is typically called by NativeVideoPlayer widget to pass the overlay builder.
   /// When an overlay is set, native controls are automatically hidden and Dart fullscreen is used.
-  void setOverlayBuilder(Widget Function(BuildContext, NativeVideoPlayerController)? builder) {
+  void setOverlayBuilder(
+    Widget Function(BuildContext, NativeVideoPlayerController)? builder,
+  ) {
     _overlayBuilder = builder;
 
     // If we have a method channel, hide native controls when overlay is set
@@ -235,7 +249,10 @@ class NativeVideoPlayerController {
   ///
   /// **Parameters:**
   /// - platformViewId: The unique ID assigned by Flutter to the platform view
-  Future<void> onPlatformViewCreated(int platformViewId, BuildContext context) async {
+  Future<void> onPlatformViewCreated(
+    int platformViewId,
+    BuildContext context,
+  ) async {
     _platformViewIds.add(platformViewId);
 
     // Store context for Dart fullscreen
@@ -247,106 +264,127 @@ class NativeVideoPlayerController {
 
     // IMPORTANT: Set up event channel for EVERY platform view
     // This ensures that both the original and fullscreen widgets receive events
-    final EventChannel eventChannel = EventChannel('native_video_player_$platformViewId');
+    final EventChannel eventChannel = EventChannel(
+      'native_video_player_$platformViewId',
+    );
 
     // Set up event stream and store the subscription for later cleanup
-    _eventSubscriptions[platformViewId] = eventChannel.receiveBroadcastStream().listen(
-      (dynamic eventMap) async {
-        final map = eventMap as Map<dynamic, dynamic>;
-        final String eventName = map['event'] as String;
+    _eventSubscriptions[platformViewId] = eventChannel
+        .receiveBroadcastStream()
+        .listen(
+          (dynamic eventMap) async {
+            final map = eventMap as Map<dynamic, dynamic>;
+            final String eventName = map['event'] as String;
 
-        // Handle AirPlay availability change event
-        if (eventName == 'airPlayAvailabilityChanged') {
-          final bool isAvailable = map['isAvailable'] as bool? ?? false;
-          for (final handler in _airPlayAvailabilityHandlers) {
-            handler(isAvailable);
-          }
-          return;
-        }
-
-        // Handle AirPlay connection change event
-        if (eventName == 'airPlayConnectionChanged') {
-          final bool isConnected = map['isConnected'] as bool? ?? false;
-          for (final handler in _airPlayConnectionHandlers) {
-            handler(isConnected);
-          }
-          return;
-        }
-
-        // Determine if this is an activity event or control event
-        final isActivityEvent = _isActivityEvent(eventName);
-
-        if (isActivityEvent) {
-          final activityEvent = PlayerActivityEvent.fromMap(map);
-
-          // Complete initialization when we receive the isInitialized event
-          if (!_state.activityState.isInitialized &&
-              activityEvent.state == PlayerActivityState.initialized &&
-              _initializeCompleter != null &&
-              !_initializeCompleter!.isCompleted) {
-            _initializeCompleter!.complete();
-          }
-
-          // Update activity state
-          _updateState(_state.copyWith(activityState: activityEvent.state));
-
-          // Handle loaded events to get initial duration
-          if (activityEvent.state == PlayerActivityState.loaded) {
-            if (activityEvent.data != null) {
-              final int duration = (activityEvent.data!['duration'] as num?)?.toInt() ?? 0;
-              _updateState(_state.copyWith(duration: Duration(milliseconds: duration)));
+            // Handle AirPlay availability change event
+            if (eventName == 'airPlayAvailabilityChanged') {
+              final bool isAvailable = map['isAvailable'] as bool? ?? false;
+              for (final handler in _airPlayAvailabilityHandlers) {
+                handler(isAvailable);
+              }
+              return;
             }
-          }
 
-          // Notify activity listeners
-          for (final handler in _activityEventHandlers) {
-            handler(activityEvent);
-          }
-        } else {
-          final controlEvent = PlayerControlEvent.fromMap(map);
-
-          // Handle fullscreen change events
-          if (controlEvent.state == PlayerControlState.fullscreenEntered ||
-              controlEvent.state == PlayerControlState.fullscreenExited) {
-            final bool isFullscreen =
-                controlEvent.data?['isFullscreen'] as bool? ??
-                controlEvent.state == PlayerControlState.fullscreenEntered;
-            _updateState(_state.copyWith(isFullScreen: isFullscreen, controlState: controlEvent.state));
-          }
-
-          // Handle time update events
-          if (controlEvent.state == PlayerControlState.timeUpdated) {
-            if (controlEvent.data != null) {
-              final int position = (controlEvent.data!['position'] as num?)?.toInt() ?? 0;
-              final int duration = (controlEvent.data!['duration'] as num?)?.toInt() ?? 0;
-              final int bufferedPosition = (controlEvent.data!['bufferedPosition'] as num?)?.toInt() ?? 0;
-
-              _updateState(
-                _state.copyWith(
-                  currentPosition: Duration(milliseconds: position),
-                  duration: Duration(milliseconds: duration),
-                  bufferedPosition: Duration(milliseconds: bufferedPosition),
-                  controlState: controlEvent.state,
-                ),
-              );
+            // Handle AirPlay connection change event
+            if (eventName == 'airPlayConnectionChanged') {
+              final bool isConnected = map['isConnected'] as bool? ?? false;
+              for (final handler in _airPlayConnectionHandlers) {
+                handler(isConnected);
+              }
+              return;
             }
-          } else {
-            // Update control state for other control events
-            _updateState(_state.copyWith(controlState: controlEvent.state));
-          }
 
-          // Notify control listeners
-          for (final handler in _controlEventHandlers) {
-            handler(controlEvent);
-          }
-        }
-      },
-      onError: (dynamic error) {
-        if (!_state.activityState.isInitialized && _initializeCompleter != null && !_initializeCompleter!.isCompleted) {
-          _initializeCompleter!.completeError(error);
-        }
-      },
-    );
+            // Determine if this is an activity event or control event
+            final isActivityEvent = _isActivityEvent(eventName);
+
+            if (isActivityEvent) {
+              final activityEvent = PlayerActivityEvent.fromMap(map);
+
+              // Complete initialization when we receive the isInitialized event
+              if (!_state.activityState.isInitialized &&
+                  activityEvent.state == PlayerActivityState.initialized &&
+                  _initializeCompleter != null &&
+                  !_initializeCompleter!.isCompleted) {
+                _initializeCompleter!.complete();
+              }
+
+              // Update activity state
+              _updateState(_state.copyWith(activityState: activityEvent.state));
+
+              // Handle loaded events to get initial duration
+              if (activityEvent.state == PlayerActivityState.loaded) {
+                if (activityEvent.data != null) {
+                  final int duration =
+                      (activityEvent.data!['duration'] as num?)?.toInt() ?? 0;
+                  _updateState(
+                    _state.copyWith(duration: Duration(milliseconds: duration)),
+                  );
+                }
+              }
+
+              // Notify activity listeners
+              for (final handler in _activityEventHandlers) {
+                handler(activityEvent);
+              }
+            } else {
+              final controlEvent = PlayerControlEvent.fromMap(map);
+
+              // Handle fullscreen change events
+              if (controlEvent.state == PlayerControlState.fullscreenEntered ||
+                  controlEvent.state == PlayerControlState.fullscreenExited) {
+                final bool isFullscreen =
+                    controlEvent.data?['isFullscreen'] as bool? ??
+                    controlEvent.state == PlayerControlState.fullscreenEntered;
+                _updateState(
+                  _state.copyWith(
+                    isFullScreen: isFullscreen,
+                    controlState: controlEvent.state,
+                  ),
+                );
+              }
+
+              // Handle time update events
+              if (controlEvent.state == PlayerControlState.timeUpdated) {
+                if (controlEvent.data != null) {
+                  final int position =
+                      (controlEvent.data!['position'] as num?)?.toInt() ?? 0;
+                  final int duration =
+                      (controlEvent.data!['duration'] as num?)?.toInt() ?? 0;
+                  final int bufferedPosition =
+                      (controlEvent.data!['bufferedPosition'] as num?)
+                          ?.toInt() ??
+                      0;
+
+                  _updateState(
+                    _state.copyWith(
+                      currentPosition: Duration(milliseconds: position),
+                      duration: Duration(milliseconds: duration),
+                      bufferedPosition: Duration(
+                        milliseconds: bufferedPosition,
+                      ),
+                      controlState: controlEvent.state,
+                    ),
+                  );
+                }
+              } else {
+                // Update control state for other control events
+                _updateState(_state.copyWith(controlState: controlEvent.state));
+              }
+
+              // Notify control listeners
+              for (final handler in _controlEventHandlers) {
+                handler(controlEvent);
+              }
+            }
+          },
+          onError: (dynamic error) {
+            if (!_state.activityState.isInitialized &&
+                _initializeCompleter != null &&
+                !_initializeCompleter!.isCompleted) {
+              _initializeCompleter!.completeError(error);
+            }
+          },
+        );
 
     // Set up MainActivity PiP event listener (Android only, once per app)
     _setupMainActivityPipListener();
@@ -371,13 +409,16 @@ class NativeVideoPlayerController {
     }
 
     try {
-      final EventChannel pipEventChannel = const EventChannel('native_video_player_pip_events');
+      final EventChannel pipEventChannel = const EventChannel(
+        'native_video_player_pip_events',
+      );
 
       _pipEventSubscription = pipEventChannel.receiveBroadcastStream().listen(
         (dynamic eventMap) {
           final map = eventMap as Map<dynamic, dynamic>;
           final String eventName = map['event'] as String;
-          final bool isInPipMode = map['isInPictureInPictureMode'] as bool? ?? false;
+          final bool isInPipMode =
+              map['isInPictureInPictureMode'] as bool? ?? false;
 
           // Create a control event based on the MainActivity event
           final PlayerControlState state;
@@ -391,7 +432,10 @@ class NativeVideoPlayerController {
 
           final controlEvent = PlayerControlEvent(
             state: state,
-            data: <String, dynamic>{'isPictureInPicture': isInPipMode, 'fromMainActivity': true},
+            data: <String, dynamic>{
+              'isPictureInPicture': isInPipMode,
+              'fromMainActivity': true,
+            },
           );
 
           // Update controller state
@@ -412,10 +456,12 @@ class NativeVideoPlayerController {
   }
 
   /// Callback for AirPlay availability changes
-  final List<void Function(bool isAvailable)> _airPlayAvailabilityHandlers = <void Function(bool)>[];
+  final List<void Function(bool isAvailable)> _airPlayAvailabilityHandlers =
+      <void Function(bool)>[];
 
   /// Callback for AirPlay connection changes
-  final List<void Function(bool isConnected)> _airPlayConnectionHandlers = <void Function(bool)>[];
+  final List<void Function(bool isConnected)> _airPlayConnectionHandlers =
+      <void Function(bool)>[];
 
   /// Adds a listener for AirPlay availability changes
   void addAirPlayAvailabilityListener(void Function(bool) listener) {
@@ -425,7 +471,8 @@ class NativeVideoPlayerController {
   }
 
   /// Removes a listener for AirPlay availability changes
-  void removeAirPlayAvailabilityListener(void Function(bool) listener) => _airPlayAvailabilityHandlers.remove(listener);
+  void removeAirPlayAvailabilityListener(void Function(bool) listener) =>
+      _airPlayAvailabilityHandlers.remove(listener);
 
   /// Adds a listener for AirPlay connection changes (when video connects/disconnects to AirPlay)
   void addAirPlayConnectionListener(void Function(bool) listener) {
@@ -435,7 +482,8 @@ class NativeVideoPlayerController {
   }
 
   /// Removes a listener for AirPlay connection changes
-  void removeAirPlayConnectionListener(void Function(bool) listener) => _airPlayConnectionHandlers.remove(listener);
+  void removeAirPlayConnectionListener(void Function(bool) listener) =>
+      _airPlayConnectionHandlers.remove(listener);
 
   /// Determines if an event name is an activity event
   bool _isActivityEvent(String eventName) {
@@ -467,11 +515,14 @@ class NativeVideoPlayerController {
     _platformViewContexts.remove(platformViewId);
 
     // Cancel the event channel subscription for this platform view
-    unawaited(_eventSubscriptions[platformViewId]?.cancel() ?? Future<void>.value());
+    unawaited(
+      _eventSubscriptions[platformViewId]?.cancel() ?? Future<void>.value(),
+    );
     _eventSubscriptions.remove(platformViewId);
 
     // If the disposed view was the primary view, switch to another active view
-    if (_primaryPlatformViewId == platformViewId && _platformViewIds.isNotEmpty) {
+    if (_primaryPlatformViewId == platformViewId &&
+        _platformViewIds.isNotEmpty) {
       // Use the most recent remaining view
       final newPrimaryViewId = _platformViewIds.last;
       _updateMethodChannel(newPrimaryViewId);
@@ -504,18 +555,30 @@ class NativeVideoPlayerController {
     }
 
     if (_methodChannel == null) {
-      throw Exception('Method channel not initialized. Platform view not created.');
+      throw Exception(
+        'Method channel not initialized. Platform view not created.',
+      );
     }
 
     _url = url;
 
     try {
-      await _methodChannel!.load(url: url, autoPlay: autoPlay, headers: headers, mediaInfo: mediaInfo?.toMap());
+      await _methodChannel!.load(
+        url: url,
+        autoPlay: autoPlay,
+        headers: headers,
+        mediaInfo: mediaInfo?.toMap(),
+      );
 
       // Fetch available qualities after loading
       final qualities = await _methodChannel!.getAvailableQualities();
 
-      _updateState(_state.copyWith(qualities: qualities, activityState: PlayerActivityState.loaded));
+      _updateState(
+        _state.copyWith(
+          qualities: qualities,
+          activityState: PlayerActivityState.loaded,
+        ),
+      );
 
       // Notify control listeners about available qualities
       if (qualities.isNotEmpty) {
@@ -662,7 +725,10 @@ class NativeVideoPlayerController {
     await FullscreenManager.showFullscreenDialog(
       context: context,
       builder: (dialogContext) {
-        return FullscreenVideoPlayer(controller: this, overlayBuilder: _overlayBuilder);
+        return FullscreenVideoPlayer(
+          controller: this,
+          overlayBuilder: _overlayBuilder,
+        );
       },
       lockToLandscape: lockToLandscape,
       onExit: () {
@@ -735,7 +801,8 @@ class NativeVideoPlayerController {
     }
 
     // Cancel all event channel subscriptions
-    for (final StreamSubscription<dynamic> subscription in _eventSubscriptions.values) {
+    for (final StreamSubscription<dynamic> subscription
+        in _eventSubscriptions.values) {
       await subscription.cancel();
     }
     _eventSubscriptions.clear();

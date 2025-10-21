@@ -15,11 +15,17 @@ class FullscreenManager {
   /// - lockToLandscape: If true, locks orientation to landscape modes only
   static Future<void> enterFullscreen({bool lockToLandscape = true}) async {
     // Hide system UI
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky, overlays: []);
+    await SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.immersiveSticky,
+      overlays: [],
+    );
 
     // Set orientation preferences
     if (lockToLandscape) {
-      await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
     } else {
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
@@ -37,7 +43,10 @@ class FullscreenManager {
   /// - Restores original orientation preferences
   static Future<void> exitFullscreen() async {
     // Restore system UI
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge, overlays: SystemUiOverlay.values);
+    await SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+      overlays: SystemUiOverlay.values,
+    );
 
     // Restore orientation preferences
     // Default to all orientations or portrait up
