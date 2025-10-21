@@ -28,7 +28,10 @@ class _VideoWithOverlayScreenState extends State<VideoWithOverlayScreen> {
       id: widget.video.id,
       autoPlay: false,
       lockToLandscape: false,
-      mediaInfo: NativeVideoPlayerMediaInfo(title: widget.video.title, subtitle: widget.video.description),
+      mediaInfo: NativeVideoPlayerMediaInfo(
+        title: widget.video.title,
+        subtitle: widget.video.description,
+      ),
     );
 
     await _controller.initialize();
@@ -71,12 +74,20 @@ class _VideoWithOverlayScreenState extends State<VideoWithOverlayScreen> {
                       children: [
                         Text(
                           widget.video.title,
-                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Text(
                           widget.video.description,
-                          style: TextStyle(fontSize: 15, color: Colors.grey[700], height: 1.5),
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.grey[700],
+                            height: 1.5,
+                          ),
                         ),
                         const SizedBox(height: 24),
                         const Divider(),
@@ -100,13 +111,18 @@ class _VideoWithOverlayScreenState extends State<VideoWithOverlayScreen> {
       children: [
         const Text(
           'Features Demonstrated:',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
         ),
         const SizedBox(height: 12),
         _buildFeatureItem(
           icon: Icons.layers,
           title: 'Custom Overlay',
-          description: 'Flutter-based overlay with custom controls on top of native player',
+          description:
+              'Flutter-based overlay with custom controls on top of native player',
         ),
         _buildFeatureItem(
           icon: Icons.fullscreen,
@@ -116,18 +132,24 @@ class _VideoWithOverlayScreenState extends State<VideoWithOverlayScreen> {
         _buildFeatureItem(
           icon: Icons.touch_app,
           title: 'Auto-hide Controls',
-          description: 'Controls automatically hide after 3 seconds of inactivity',
+          description:
+              'Controls automatically hide after 3 seconds of inactivity',
         ),
         _buildFeatureItem(
           icon: Icons.play_circle_outline,
           title: 'Native Playback',
-          description: 'Still uses native video player (AVPlayer/ExoPlayer) for optimal performance',
+          description:
+              'Still uses native video player (AVPlayer/ExoPlayer) for optimal performance',
         ),
       ],
     );
   }
 
-  Widget _buildFeatureItem({required IconData icon, required String title, required String description}) {
+  Widget _buildFeatureItem({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -148,10 +170,21 @@ class _VideoWithOverlayScreenState extends State<VideoWithOverlayScreen> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
                 ),
                 const SizedBox(height: 4),
-                Text(description, style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.4)),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    height: 1.4,
+                  ),
+                ),
               ],
             ),
           ),

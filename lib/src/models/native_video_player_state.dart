@@ -78,6 +78,15 @@ class NativeVideoPlayerState {
 
   @override
   int get hashCode {
-    return Object.hash(isFullScreen, currentPosition, duration, bufferedPosition, volume, qualities, activityState, controlState);
+    return Object.hash(
+      isFullScreen,
+      currentPosition,
+      duration,
+      bufferedPosition,
+      volume,
+      qualities,
+      activityState,
+      controlState,
+    );
   }
 }

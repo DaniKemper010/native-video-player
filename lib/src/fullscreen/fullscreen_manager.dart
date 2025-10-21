@@ -1,7 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import '../platform/platform_utils.dart';
 
 /// Manages fullscreen state, system UI visibility, and device orientation
 class FullscreenManager {
@@ -41,7 +41,7 @@ class FullscreenManager {
 
     // Restore orientation preferences
     // Default to all orientations or portrait up
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (PlatformUtils.isAndroid || PlatformUtils.isIOS) {
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,

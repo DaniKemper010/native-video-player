@@ -28,7 +28,8 @@ class NativeVideoPlayerQuality {
     );
   }
 
-  factory NativeVideoPlayerQuality.auto() => const NativeVideoPlayerQuality(label: 'Auto', url: '', isAuto: true);
+  factory NativeVideoPlayerQuality.auto() =>
+      const NativeVideoPlayerQuality(label: 'Auto', url: '', isAuto: true);
 
   final String label;
   final String url;

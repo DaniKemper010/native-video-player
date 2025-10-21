@@ -18,3 +18,4 @@ export 'src/models/native_video_player_media_info.dart';
 export 'src/models/native_video_player_quality.dart';
 export 'src/models/native_video_player_state.dart';
 export 'src/native_video_player_widget.dart';
+export 'src/platform/platform_utils.dart';

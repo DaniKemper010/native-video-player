@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-10-21
+
+### Added
+- WASM compatibility: Package now supports Web Assembly (WASM) runtime
+  - Implemented conditional imports using `dart:io` only on native platforms
+  - Added `PlatformUtils` class for platform detection without direct `dart:io` dependency
+  - Exported `PlatformUtils` for users who need platform-agnostic code
+
+### Changed
+- Replaced direct `Platform` checks with `PlatformUtils` in fullscreen manager and controller
+- Code formatting improvements across all files
+
 ## [0.2.1] - 2025-10-21
 
 ### Fixed

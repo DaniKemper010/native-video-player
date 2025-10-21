@@ -19,7 +19,11 @@ class FullscreenVideoPlayer extends StatefulWidget {
   final NativeVideoPlayerController controller;
 
   /// Optional overlay widget builder for custom controls
-  final Widget Function(BuildContext context, NativeVideoPlayerController controller)? overlayBuilder;
+  final Widget Function(
+    BuildContext context,
+    NativeVideoPlayerController controller,
+  )?
+  overlayBuilder;
 
   /// Background color for the fullscreen container
   final Color backgroundColor;
@@ -61,7 +65,10 @@ class _FullscreenVideoPlayerState extends State<FullscreenVideoPlayer> {
     return Scaffold(
       backgroundColor: widget.backgroundColor,
       body: Center(
-        child: NativeVideoPlayer(controller: widget.controller, overlayBuilder: widget.overlayBuilder),
+        child: NativeVideoPlayer(
+          controller: widget.controller,
+          overlayBuilder: widget.overlayBuilder,
+        ),
       ),
     );
   }

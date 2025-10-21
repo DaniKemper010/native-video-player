@@ -1,5 +1,7 @@
 # better_native_video_player
 
+[![pub package](https://img.shields.io/pub/v/better_native_video_player.svg)](https://pub.dev/packages/better_native_video_player)
+
 A Flutter plugin for native video playback on iOS and Android with advanced features.
 
 ## Features
@@ -18,6 +20,7 @@ A Flutter plugin for native video playback on iOS and Android with advanced feat
 - ✅ Real-time playback position tracking with **buffered position indicator**
 - ✅ Custom HTTP headers support for video requests
 - ✅ Multiple controller instances support with shared player management
+- ✅ **WASM compatible** - Package works with Web Assembly runtime
 
 ## Platform Support
 
@@ -32,7 +35,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  better_native_video_player: ^0.2.1
+  better_native_video_player: ^0.2.2
 ```
 
 Then run:
@@ -42,6 +45,8 @@ flutter pub get
 ```
 
 ### iOS Setup
+
+This plugin supports both **CocoaPods** and **Swift Package Manager (SPM)**. Flutter will automatically use the appropriate dependency manager based on your project configuration.
 
 Add the following to your `Info.plist`:
 

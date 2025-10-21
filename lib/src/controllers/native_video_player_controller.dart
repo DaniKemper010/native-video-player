@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +9,7 @@ import '../fullscreen/fullscreen_video_player.dart';
 import '../models/native_video_player_media_info.dart';
 import '../models/native_video_player_quality.dart';
 import '../models/native_video_player_state.dart';
+import '../platform/platform_utils.dart';
 import '../platform/video_player_method_channel.dart';
 
 /// Controller for managing native video player via platform channels
@@ -366,7 +366,7 @@ class NativeVideoPlayerController {
 
     // Only set up the PiP event channel on Android
     // iOS doesn't have this channel and doesn't need it
-    if (!Platform.isAndroid) {
+    if (!PlatformUtils.isAndroid) {
       return;
     }
 

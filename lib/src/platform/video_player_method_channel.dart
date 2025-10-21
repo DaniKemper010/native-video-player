@@ -38,7 +38,9 @@ class VideoPlayerMethodChannel {
   /// Starts or resumes video playback
   Future<void> play() async {
     try {
-      await _methodChannel.invokeMethod<void>('play', <String, Object>{'viewId': primaryPlatformViewId});
+      await _methodChannel.invokeMethod<void>('play', <String, Object>{
+        'viewId': primaryPlatformViewId,
+      });
     } catch (e) {
       // Silently handle errors
     }
@@ -47,7 +49,9 @@ class VideoPlayerMethodChannel {
   /// Pauses video playback
   Future<void> pause() async {
     try {
-      await _methodChannel.invokeMethod<void>('pause', <String, Object>{'viewId': primaryPlatformViewId});
+      await _methodChannel.invokeMethod<void>('pause', <String, Object>{
+        'viewId': primaryPlatformViewId,
+      });
     } catch (e) {
       debugPrint('Error calling pause: $e');
     }
@@ -92,7 +96,10 @@ class VideoPlayerMethodChannel {
   /// Sets the video quality
   Future<void> setQuality(NativeVideoPlayerQuality quality) async {
     try {
-      final Map<String, Object> params = <String, Object>{'viewId': primaryPlatformViewId, 'quality': quality.toMap()};
+      final Map<String, Object> params = <String, Object>{
+        'viewId': primaryPlatformViewId,
+        'quality': quality.toMap(),
+      };
       await _methodChannel.invokeMethod<void>('setQuality', params);
     } catch (e) {
       debugPrint('Error calling setQuality: $e');
@@ -102,12 +109,16 @@ class VideoPlayerMethodChannel {
   /// Gets available video qualities
   Future<List<NativeVideoPlayerQuality>> getAvailableQualities() async {
     try {
-      final dynamic result = await _methodChannel.invokeMethod<dynamic>('getAvailableQualities', <String, Object>{
-        'viewId': primaryPlatformViewId,
-      });
+      final dynamic result = await _methodChannel.invokeMethod<dynamic>(
+        'getAvailableQualities',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
       if (result is List) {
         final qualities = result
-            .map((dynamic e) => NativeVideoPlayerQuality.fromMap(e as Map<dynamic, dynamic>))
+            .map(
+              (dynamic e) =>
+                  NativeVideoPlayerQuality.fromMap(e as Map<dynamic, dynamic>),
+            )
             .toList();
         return qualities;
       }
@@ -122,9 +133,10 @@ class VideoPlayerMethodChannel {
   /// Checks if Picture-in-Picture is available
   Future<bool> isPictureInPictureAvailable() async {
     try {
-      final dynamic result = await _methodChannel.invokeMethod<dynamic>('isPictureInPictureAvailable', <String, Object>{
-        'viewId': primaryPlatformViewId,
-      });
+      final dynamic result = await _methodChannel.invokeMethod<dynamic>(
+        'isPictureInPictureAvailable',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
       return result == true;
     } catch (e) {
       debugPrint('Error checking PiP availability: $e');
@@ -135,9 +147,10 @@ class VideoPlayerMethodChannel {
   /// Enters Picture-in-Picture mode
   Future<bool> enterPictureInPicture() async {
     try {
-      final dynamic result = await _methodChannel.invokeMethod<dynamic>('enterPictureInPicture', <String, Object>{
-        'viewId': primaryPlatformViewId,
-      });
+      final dynamic result = await _methodChannel.invokeMethod<dynamic>(
+        'enterPictureInPicture',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
       return result == true;
     } catch (e) {
       debugPrint('Error calling enterPictureInPicture: $e');
@@ -148,9 +161,10 @@ class VideoPlayerMethodChannel {
   /// Exits Picture-in-Picture mode
   Future<bool> exitPictureInPicture() async {
     try {
-      final dynamic result = await _methodChannel.invokeMethod<dynamic>('exitPictureInPicture', <String, Object>{
-        'viewId': primaryPlatformViewId,
-      });
+      final dynamic result = await _methodChannel.invokeMethod<dynamic>(
+        'exitPictureInPicture',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
       return result == true;
     } catch (e) {
       debugPrint('Error calling exitPictureInPicture: $e');
@@ -161,7 +175,10 @@ class VideoPlayerMethodChannel {
   /// Enters fullscreen mode
   Future<void> enterFullScreen() async {
     try {
-      await _methodChannel.invokeMethod<void>('enterFullScreen', <String, Object>{'viewId': primaryPlatformViewId});
+      await _methodChannel.invokeMethod<void>(
+        'enterFullScreen',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
     } catch (e) {
       debugPrint('Error calling enterFullScreen: $e');
     }
@@ -170,7 +187,10 @@ class VideoPlayerMethodChannel {
   /// Exits fullscreen mode
   Future<void> exitFullScreen() async {
     try {
-      await _methodChannel.invokeMethod<void>('exitFullScreen', <String, Object>{'viewId': primaryPlatformViewId});
+      await _methodChannel.invokeMethod<void>(
+        'exitFullScreen',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
     } catch (e) {
       debugPrint('Error calling exitFullScreen: $e');
     }
@@ -179,10 +199,10 @@ class VideoPlayerMethodChannel {
   /// Sets whether native player controls are shown
   Future<void> setShowNativeControls(bool show) async {
     try {
-      await _methodChannel.invokeMethod<void>('setShowNativeControls', <String, Object>{
-        'viewId': primaryPlatformViewId,
-        'show': show,
-      });
+      await _methodChannel.invokeMethod<void>(
+        'setShowNativeControls',
+        <String, Object>{'viewId': primaryPlatformViewId, 'show': show},
+      );
     } catch (e) {
       debugPrint('Error calling setShowNativeControls: $e');
     }
@@ -191,9 +211,10 @@ class VideoPlayerMethodChannel {
   /// Checks if AirPlay is available (iOS only)
   Future<bool> isAirPlayAvailable() async {
     try {
-      final dynamic result = await _methodChannel.invokeMethod<dynamic>('isAirPlayAvailable', <String, Object>{
-        'viewId': primaryPlatformViewId,
-      });
+      final dynamic result = await _methodChannel.invokeMethod<dynamic>(
+        'isAirPlayAvailable',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
       return result == true;
     } catch (e) {
       debugPrint('Error calling isAirPlayAvailable: $e');
@@ -204,9 +225,10 @@ class VideoPlayerMethodChannel {
   /// Shows the AirPlay route picker (iOS only)
   Future<void> showAirPlayPicker() async {
     try {
-      await _methodChannel.invokeMethod<void>('showAirPlayPicker', <String, Object>{
-        'viewId': primaryPlatformViewId,
-      });
+      await _methodChannel.invokeMethod<void>(
+        'showAirPlayPicker',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
     } catch (e) {
       debugPrint('Error calling showAirPlayPicker: $e');
     }

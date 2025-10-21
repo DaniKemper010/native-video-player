@@ -44,7 +44,9 @@ void main() {
 
     // Initialize and load video
     await controller.initialize();
-    await controller.load(url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+    await controller.load(
+      url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    );
 
     // Wait for video to load
     await tester.pumpAndSettle();
@@ -92,12 +94,16 @@ void main() {
     await tester.pumpAndSettle();
 
     // Add event listeners
-    controller.addActivityListener((event) => receivedActivityEvents.add(event));
+    controller.addActivityListener(
+      (event) => receivedActivityEvents.add(event),
+    );
     controller.addControlListener((event) => receivedControlEvents.add(event));
 
     // Initialize and load video
     await controller.initialize();
-    await controller.load(url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+    await controller.load(
+      url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    );
 
     await tester.pumpAndSettle();
 
@@ -155,7 +161,9 @@ void main() {
 
     // Initialize and load video
     await controller.initialize();
-    await controller.load(url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+    await controller.load(
+      url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+    );
 
     await tester.pumpAndSettle();
 
@@ -166,6 +174,9 @@ void main() {
     // Note: We can't actually test PiP mode in integration tests
     // as it requires user interaction, but we can verify the setup
     expect(controller.creationParams['allowsPictureInPicture'], isTrue);
-    expect(controller.creationParams['canStartPictureInPictureAutomatically'], isTrue);
+    expect(
+      controller.creationParams['canStartPictureInPictureAutomatically'],
+      isTrue,
+    );
   });
 }

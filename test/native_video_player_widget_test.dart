@@ -21,28 +21,30 @@ void main() {
       ),
     );
 
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(methodChannel, (
-      MethodCall methodCall,
-    ) async {
-      switch (methodCall.method) {
-        case 'load':
-          return null;
-        case 'play':
-          return null;
-        case 'pause':
-          return null;
-        default:
-          return null;
-      }
-    });
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, (MethodCall methodCall) async {
+          switch (methodCall.method) {
+            case 'load':
+              return null;
+            case 'play':
+              return null;
+            case 'pause':
+              return null;
+            default:
+              return null;
+          }
+        });
   });
 
   tearDown(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(methodChannel, null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(methodChannel, null);
     controller.dispose();
   });
 
-  testWidgets('NativeVideoPlayer widget creates and initializes correctly', (WidgetTester tester) async {
+  testWidgets('NativeVideoPlayer widget creates and initializes correctly', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(body: NativeVideoPlayer(controller: controller)),
@@ -52,18 +54,22 @@ void main() {
     expect(find.byType(NativeVideoPlayer), findsOneWidget);
   });
 
-  testWidgets('NativeVideoPlayer widget handles platform view creation', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(body: NativeVideoPlayer(controller: controller)),
-      ),
-    );
+  testWidgets(
+    'NativeVideoPlayer widget handles platform view creation',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: NativeVideoPlayer(controller: controller)),
+        ),
+      );
 
-    await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
 
-    // Verify platform view is created
-    expect(find.byType(AndroidView), findsOneWidget);
-  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+      // Verify platform view is created
+      expect(find.byType(AndroidView), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
 
   testWidgets(
     'NativeVideoPlayer widget handles platform view creation on iOS',
@@ -99,7 +105,9 @@ void main() {
     variant: TargetPlatformVariant.only(TargetPlatform.linux),
   );
 
-  testWidgets('NativeVideoPlayer widget disposes correctly', (WidgetTester tester) async {
+  testWidgets('NativeVideoPlayer widget disposes correctly', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(body: NativeVideoPlayer(controller: controller)),
@@ -109,7 +117,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // Rebuild without the widget to trigger disposal
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: SizedBox())),
+    );
 
     // Verify no errors during disposal
     expect(tester.takeException(), isNull);

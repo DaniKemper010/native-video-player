@@ -4,7 +4,12 @@ class VideoItem {
   final String description;
   final String url;
 
-  VideoItem({required this.id, required this.title, required this.description, required this.url});
+  VideoItem({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.url,
+  });
 
   static List<VideoItem> getSampleVideos() {
     return [
@@ -39,7 +44,8 @@ class VideoItem {
       VideoItem(
         id: 5,
         title: 'For Bigger Blazes',
-        description: 'Experience the power and beauty of fire in stunning high definition quality.',
+        description:
+            'Experience the power and beauty of fire in stunning high definition quality.',
         url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
       ),
     ];

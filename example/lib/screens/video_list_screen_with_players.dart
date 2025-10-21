@@ -18,7 +18,11 @@ class VideoListScreenWithPlayers extends StatelessWidget {
         backgroundColor: Colors.white,
         title: const Text(
           'Video Gallery',
-          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 24),
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+          ),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -40,8 +44,11 @@ class VideoListScreenWithPlayers extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) =>
-                      VideoDetailScreenFull(video: video, controller: controller, useCustomOverlay: useCustomOverlay),
+                  builder: (context) => VideoDetailScreenFull(
+                    video: video,
+                    controller: controller,
+                    useCustomOverlay: useCustomOverlay,
+                  ),
                 ),
               );
             },
