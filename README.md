@@ -7,15 +7,17 @@ A Flutter plugin for native video playback on iOS and Android with advanced feat
 - ✅ Native video players: **AVPlayerViewController** on iOS and **ExoPlayer (Media3)** on Android
 - ✅ **HLS streaming** support with adaptive quality selection
 - ✅ **Picture-in-Picture (PiP)** mode on both platforms with automatic state management
-- ✅ Native **fullscreen** playback
+- ✅ **AirPlay** support on iOS with availability detection and connection events
+- ✅ Native **fullscreen** playback with Dart-side fullscreen option
+- ✅ **Custom overlay controls** - Build your own UI on top of native player
 - ✅ **Now Playing** integration (Control Center on iOS, lock screen notifications on Android)
 - ✅ Background playback with media notifications
-- ✅ Playback controls: play, pause, seek, volume, speed
-- ✅ Quality selection for HLS streams
+- ✅ Playback controls: play, pause, seek, volume, speed (0.25x - 2.0x)
+- ✅ Quality selection for HLS streams with real-time switching
 - ✅ **Separated event streams**: Activity events (play/pause/buffering) and Control events (quality/speed/PiP/fullscreen)
-- ✅ Real-time playback position tracking with buffered position
+- ✅ Real-time playback position tracking with **buffered position indicator**
 - ✅ Custom HTTP headers support for video requests
-- ✅ Multiple controller instances support
+- ✅ Multiple controller instances support with shared player management
 
 ## Platform Support
 
@@ -30,7 +32,7 @@ Add this to your package's `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  better_native_video_player: ^0.0.1
+  better_native_video_player: ^0.2.0
 ```
 
 Then run:
@@ -296,6 +298,191 @@ _controller.addControlListener((event) {
 });
 ```
 
+#### AirPlay (iOS Only)
+
+AirPlay allows streaming video to Apple TV, HomePod, and other AirPlay-enabled devices.
+
+```dart
+@override
+void initState() {
+  super.initState();
+
+  // Listen for AirPlay availability changes
+  _controller.addAirPlayAvailabilityListener(_handleAirPlayAvailability);
+
+  // Listen for AirPlay connection state
+  _controller.addAirPlayConnectionListener(_handleAirPlayConnection);
+}
+
+void _handleAirPlayAvailability(bool isAvailable) {
+  print('AirPlay devices available: $isAvailable');
+  // Show/hide AirPlay button in your UI
+}
+
+void _handleAirPlayConnection(bool isConnected) {
+  print('Connected to AirPlay: $isConnected');
+  // Update UI to show AirPlay is active
+}
+
+// Check if AirPlay is available
+final isAvailable = await _controller.isAirPlayAvailable();
+
+// Show AirPlay device picker
+if (isAvailable) {
+  await _controller.showAirPlayPicker();
+}
+
+@override
+void dispose() {
+  _controller.removeAirPlayAvailabilityListener(_handleAirPlayAvailability);
+  _controller.removeAirPlayConnectionListener(_handleAirPlayConnection);
+  _controller.dispose();
+  super.dispose();
+}
+```
+
+#### Custom Overlay Controls
+
+Build your own video controls UI on top of the native player:
+
+```dart
+NativeVideoPlayer(
+  controller: _controller,
+  overlayBuilder: (context, controller) {
+    return CustomVideoOverlay(controller: controller);
+  },
+)
+```
+
+Create a custom overlay widget:
+
+```dart
+class CustomVideoOverlay extends StatefulWidget {
+  final NativeVideoPlayerController controller;
+
+  const CustomVideoOverlay({required this.controller, super.key});
+
+  @override
+  State<CustomVideoOverlay> createState() => _CustomVideoOverlayState();
+}
+
+class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
+  Duration _currentPosition = Duration.zero;
+  Duration _duration = Duration.zero;
+  Duration _bufferedPosition = Duration.zero;
+  PlayerActivityState _activityState = PlayerActivityState.idle;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addActivityListener(_handleActivityEvent);
+    widget.controller.addControlListener(_handleControlEvent);
+
+    // Get initial state
+    _currentPosition = widget.controller.currentPosition;
+    _duration = widget.controller.duration;
+    _bufferedPosition = widget.controller.bufferedPosition;
+    _activityState = widget.controller.activityState;
+  }
+
+  void _handleActivityEvent(PlayerActivityEvent event) {
+    if (!mounted) return;
+    setState(() {
+      _activityState = event.state;
+    });
+  }
+
+  void _handleControlEvent(PlayerControlEvent event) {
+    if (!mounted) return;
+
+    if (event.state == PlayerControlState.timeUpdated) {
+      setState(() {
+        _currentPosition = widget.controller.currentPosition;
+        _duration = widget.controller.duration;
+        _bufferedPosition = widget.controller.bufferedPosition;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // Center play/pause button
+        Center(
+          child: IconButton(
+            icon: Icon(
+              _activityState.isPlaying ? Icons.pause : Icons.play_arrow,
+              color: Colors.white,
+              size: 48,
+            ),
+            onPressed: () {
+              if (_activityState.isPlaying) {
+                widget.controller.pause();
+              } else {
+                widget.controller.play();
+              }
+            },
+          ),
+        ),
+
+        // Progress bar with buffered indicator
+        Positioned(
+          bottom: 20,
+          left: 20,
+          right: 20,
+          child: Slider(
+            value: _currentPosition.inMilliseconds.toDouble(),
+            min: 0,
+            max: _duration.inMilliseconds.toDouble(),
+            // Shows buffered position
+            secondaryTrackValue: _bufferedPosition.inMilliseconds.toDouble(),
+            onChanged: (value) {
+              widget.controller.seekTo(Duration(milliseconds: value.toInt()));
+            },
+          ),
+        ),
+
+        // Fullscreen button
+        Positioned(
+          top: 20,
+          right: 20,
+          child: IconButton(
+            icon: Icon(
+              widget.controller.isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+              color: Colors.white,
+            ),
+            onPressed: () {
+              widget.controller.toggleFullScreen();
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeActivityListener(_handleActivityEvent);
+    widget.controller.removeControlListener(_handleControlEvent);
+    super.dispose();
+  }
+}
+```
+
+Features you can add to custom overlays:
+- **Playback controls**: Play, pause, skip forward/backward
+- **Progress bar**: Current position with buffered position indicator
+- **Speed controls**: 0.25x, 0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 1.75x, 2.0x
+- **Quality selector**: Switch between HLS quality variants
+- **Fullscreen toggle**: Enter/exit fullscreen
+- **Volume control**: Adjust playback volume
+- **AirPlay button**: Show AirPlay picker (iOS only)
+- **Auto-hide**: Fade out controls after inactivity
+- **Loading indicators**: Show when buffering
+
+See `example/lib/widgets/custom_video_overlay.dart` for a complete implementation.
+
 #### Multiple Video Players
 
 ```dart
@@ -361,6 +548,27 @@ class _MultiPlayerScreenState extends State<MultiPlayerScreen> {
 | `canStartPictureInPictureAutomatically` | `bool` | `true` | Auto-start PiP on app background (iOS 14.2+) |
 | `showNativeControls` | `bool` | `true` | Show native player controls |
 
+### NativeVideoPlayer Widget
+
+#### Constructor Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `controller` | `NativeVideoPlayerController` | required | The controller for the video player |
+| `overlayBuilder` | `Widget Function(BuildContext, NativeVideoPlayerController)?` | `null` | Builder for custom overlay controls on top of the native player |
+
+**Example:**
+```dart
+NativeVideoPlayer(
+  controller: _controller,
+  overlayBuilder: (context, controller) {
+    return CustomVideoOverlay(controller: controller);
+  },
+)
+```
+
+### NativeVideoPlayerController
+
 #### Methods
 
 - `Future<void> initialize()` - Initialize the controller
@@ -377,6 +585,12 @@ class _MultiPlayerScreenState extends State<MultiPlayerScreen> {
 - `Future<void> enterFullScreen()` - Enter fullscreen
 - `Future<void> exitFullScreen()` - Exit fullscreen
 - `Future<void> toggleFullScreen()` - Toggle fullscreen
+- `Future<bool> isAirPlayAvailable()` - Check if AirPlay devices are available (iOS only)
+- `Future<void> showAirPlayPicker()` - Show AirPlay device picker (iOS only)
+- `void addAirPlayAvailabilityListener(void Function(bool) listener)` - Listen for AirPlay availability changes (iOS only)
+- `void removeAirPlayAvailabilityListener(void Function(bool) listener)` - Remove AirPlay availability listener (iOS only)
+- `void addAirPlayConnectionListener(void Function(bool) listener)` - Listen for AirPlay connection state changes (iOS only)
+- `void removeAirPlayConnectionListener(void Function(bool) listener)` - Remove AirPlay connection listener (iOS only)
 - `void addActivityListener(void Function(PlayerActivityEvent) listener)` - Add activity event listener
 - `void removeActivityListener(void Function(PlayerActivityEvent) listener)` - Remove activity event listener
 - `void addControlListener(void Function(PlayerControlEvent) listener)` - Add control event listener
@@ -596,14 +810,17 @@ See the `example` folder for a complete working example demonstrating:
 ### Features Demonstrated
 - **Video List with Inline Players**: Multiple video players in a scrollable list
 - **Full-Screen Video Detail Page**: Dedicated page with comprehensive controls
+- **Custom Overlay Controls**: Complete example of building custom video controls
+- **AirPlay Integration**: AirPlay button with availability and connection tracking (iOS)
 - **Playback Controls**: Play, pause, seek (±10 seconds), volume control
-- **Speed Adjustment**: 0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 2.0x playback speeds
+- **Speed Adjustment**: 0.25x, 0.5x, 0.75x, 1.0x, 1.25x, 1.5x, 1.75x, 2.0x playback speeds
 - **Quality Selection**: Automatic quality detection and manual selection for HLS streams
 - **Picture-in-Picture**: Enter/exit PiP mode with state tracking
-- **Fullscreen Toggle**: Native fullscreen support on both platforms
+- **Fullscreen Toggle**: Both native and Dart-side fullscreen support
 - **Real-time Statistics**: Current position, duration, buffered position tracking
 - **Separated Event Handling**: Activity and control events with detailed logging
 - **Custom Media Info**: Now Playing integration with metadata
+- **Buffered Position Indicator**: Visual representation of how much video has been preloaded
 
 ### Running the Example
 
@@ -615,6 +832,8 @@ flutter run
 The example includes:
 - `video_list_screen_with_players.dart` - Multiple inline video players
 - `video_detail_screen_full.dart` - Full-featured video player with controls
+- `video_with_overlay_screen.dart` - Custom overlay controls demonstration
+- `custom_video_overlay.dart` - Complete custom overlay implementation with play/pause, progress bar, speed controls, quality selection, volume, AirPlay button, and auto-hide functionality
 - `video_player_card.dart` - Reusable video player widget
 - `video_item.dart` - Video model with sample HLS streams
 

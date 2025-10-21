@@ -30,6 +30,12 @@ import QuartzCore
     // Track if this is a shared player (to avoid sending duplicate initialization events)
     var isSharedPlayer: Bool = false
 
+    // AirPlay route detector
+    var routeDetector: AVRouteDetector?
+
+    // Store desired playback speed
+    var desiredPlaybackSpeed: Float = 1.0
+
     public init(
         frame: CGRect,
         viewIdentifier viewId: Int64,
@@ -122,6 +128,11 @@ import QuartzCore
             // Also set up periodic time observer for this new view
             setupPeriodicTimeObserver()
         }
+
+        // Set up AirPlay route detector (iOS 11.0+)
+        if #available(iOS 11.0, *) {
+            setupAirPlayRouteDetector()
+        }
     }
 
     public func view() -> UIView {
@@ -155,6 +166,12 @@ import QuartzCore
             handleIsPictureInPictureAvailable(result: result)
         case "enterPictureInPicture":
             handleEnterPictureInPicture(result: result)
+        case "setShowNativeControls":
+            handleSetShowNativeControls(call: call, result: result)
+        case "isAirPlayAvailable":
+            handleIsAirPlayAvailable(result: result)
+        case "showAirPlayPicker":
+            handleShowAirPlayPicker(result: result)
         case "dispose":
             handleDispose(result: result)
         default:
@@ -185,7 +202,7 @@ import QuartzCore
                 let duration = Int(CMTimeGetSeconds(currentItem.duration) * 1000)
                 let position = Int(CMTimeGetSeconds(player.currentTime()) * 1000)
                 sendEvent("timeUpdated", data: ["position": position, "duration": duration])
-                
+
                 // Send current playback state
                 switch player.timeControlStatus {
                 case .playing:
@@ -205,6 +222,15 @@ import QuartzCore
             // For new players, send isInitialized event
             print("[\(channelName)] Sending isInitialized event to new listener")
             sendEvent("isInitialized")
+        }
+
+        // Send initial AirPlay availability state
+        if #available(iOS 11.0, *) {
+            if let detector = routeDetector {
+                let isAvailable = detector.multipleRoutesDetected
+                print("[\(channelName)] Sending initial AirPlay availability: \(isAvailable)")
+                sendEvent("airPlayAvailabilityChanged", data: ["isAvailable": isAvailable])
+            }
         }
 
         return nil
@@ -235,6 +261,16 @@ import QuartzCore
 
         // Remove player observer for timeControlStatus
         player?.removeObserver(self, forKeyPath: "timeControlStatus")
+
+        // Remove player observer for externalPlaybackActive
+        player?.removeObserver(self, forKeyPath: "externalPlaybackActive")
+
+        // Remove route detector observer
+        if #available(iOS 11.0, *) {
+            routeDetector?.removeObserver(self, forKeyPath: "multipleRoutesDetected")
+            routeDetector?.isRouteDetectionEnabled = false
+            routeDetector = nil
+        }
 
         NotificationCenter.default.removeObserver(self)
         methodChannel.setMethodCallHandler(nil)

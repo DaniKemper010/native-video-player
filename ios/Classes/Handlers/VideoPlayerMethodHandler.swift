@@ -156,7 +156,11 @@ extension VideoPlayerView {
 
     func handlePlay(result: @escaping FlutterResult) {
         try? AVAudioSession.sharedInstance().setActive(true)
+        print("Playing with speed: \(desiredPlaybackSpeed)")
         player?.play()
+        // Apply the desired playback speed
+        player?.rate = desiredPlaybackSpeed
+        print("Applied playback rate: \(player?.rate ?? 0)")
         updateNowPlayingPlaybackTime()
         // Play event will be sent automatically by timeControlStatus observer
         result(nil)
@@ -192,7 +196,21 @@ extension VideoPlayerView {
     func handleSetSpeed(call: FlutterMethodCall, result: @escaping FlutterResult) {
         if let args = call.arguments as? [String: Any],
            let speed = args["speed"] as? Double {
-            player?.rate = Float(speed)
+            print("Setting playback speed to: \(speed)")
+
+            // Store the desired speed
+            desiredPlaybackSpeed = Float(speed)
+
+            print("Player status: \(player?.timeControlStatus.rawValue ?? -1)")
+
+            // If currently playing, apply the speed immediately
+            if player?.timeControlStatus == .playing {
+                print("Player is playing, applying speed immediately")
+                player?.rate = Float(speed)
+            } else {
+                print("Player is not playing, speed will be applied on next play")
+            }
+
             sendEvent("speedChange", data: ["speed": speed])
             result(nil)
         } else {
@@ -340,6 +358,77 @@ extension VideoPlayerView {
         ])
         
         result?(nil)
+    }
+
+    func handleSetShowNativeControls(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let arguments = call.arguments as? [String: Any],
+              let show = arguments["show"] as? Bool else {
+            result(FlutterError(code: "INVALID_ARGUMENTS", message: "Invalid arguments", details: nil))
+            return
+        }
+
+        // Set controls visibility for embedded player
+        playerViewController.showsPlaybackControls = show
+
+        // Also set for fullscreen player if it exists
+        if let fullscreenVC = fullscreenPlayerViewController {
+            fullscreenVC.showsPlaybackControls = show
+        }
+
+        result(nil)
+    }
+
+    func handleIsAirPlayAvailable(result: @escaping FlutterResult) {
+        // Check if AirPlay is supported on this device
+        // AVRoutePickerView requires iOS 11.0+
+        if #available(iOS 11.0, *) {
+            // AirPlay is available on iOS 11.0+
+            // Note: This checks if the device supports AirPlay, not if AirPlay devices
+            // are currently available on the network (which changes dynamically)
+            result(true)
+        } else {
+            // AirPlay requires iOS 11.0+
+            result(false)
+        }
+    }
+
+    func handleShowAirPlayPicker(result: @escaping FlutterResult) {
+        // Check iOS version - AVRoutePickerView requires iOS 11.0+
+        guard #available(iOS 11.0, *) else {
+            result(FlutterError(code: "NOT_SUPPORTED", message: "AirPlay picker requires iOS 11.0+", details: nil))
+            return
+        }
+
+        // Find the root view controller
+        guard let rootViewController = UIApplication.shared.keyWindow?.rootViewController else {
+            result(FlutterError(code: "NO_VIEW_CONTROLLER", message: "Could not find root view controller", details: nil))
+            return
+        }
+
+        // Create an AVRoutePickerView
+        let routePickerView = AVRoutePickerView()
+        routePickerView.frame = CGRect(x: 0, y: 0, width: 0, height: 0)
+        routePickerView.isHidden = true
+
+        // Add it temporarily to the view hierarchy
+        rootViewController.view.addSubview(routePickerView)
+
+        // Find the button inside the route picker view and simulate a tap
+        DispatchQueue.main.async {
+            for subview in routePickerView.subviews {
+                if let button = subview as? UIButton {
+                    button.sendActions(for: .touchUpInside)
+                    break
+                }
+            }
+
+            // Clean up - remove the route picker after a short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                routePickerView.removeFromSuperview()
+            }
+
+            result(nil)
+        }
     }
 
     func handleDispose(result: @escaping FlutterResult) {

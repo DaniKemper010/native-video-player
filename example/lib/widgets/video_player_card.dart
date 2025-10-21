@@ -2,12 +2,14 @@ import 'package:better_native_video_player/better_native_video_player.dart';
 import 'package:flutter/material.dart';
 
 import '../models/video_item.dart';
+import 'custom_video_overlay.dart';
 
 class VideoPlayerCard extends StatefulWidget {
   final VideoItem video;
   final Function(NativeVideoPlayerController) onTap;
+  final bool useCustomOverlay;
 
-  const VideoPlayerCard({super.key, required this.video, required this.onTap});
+  const VideoPlayerCard({super.key, required this.video, required this.onTap, this.useCustomOverlay = false});
 
   @override
   State<VideoPlayerCard> createState() => _VideoPlayerCardState();
@@ -29,7 +31,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
       _controller = NativeVideoPlayerController(
         id: widget.video.id,
         autoPlay: false,
-        showNativeControls: true,
+        lockToLandscape: false,
         mediaInfo: NativeVideoPlayerMediaInfo(title: widget.video.title, subtitle: widget.video.description),
       );
 
@@ -55,6 +57,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
     try {
       await _controller!.initialize();
       await _controller!.load(url: widget.video.url);
+
       debugPrint('VideoPlayerCard ${widget.video.id}: Video loaded!');
     } catch (e) {
       if (mounted) {
@@ -201,7 +204,12 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                       // Only show the video player when this route is currently visible
                       // This prevents having two NativeVideoPlayer widgets active simultaneously
                       child: (_shouldCreatePlayer && _controller != null && isCurrentRoute)
-                          ? NativeVideoPlayer(controller: _controller!)
+                          ? NativeVideoPlayer(
+                              controller: _controller!,
+                              overlayBuilder: widget.useCustomOverlay
+                                  ? (context, controller) => CustomVideoOverlay(controller: controller)
+                                  : null,
+                            )
                           : null,
                     ),
                   ),

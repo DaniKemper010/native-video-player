@@ -252,6 +252,11 @@ class VideoPlayerView(
             "enterPictureInPicture" -> {
                 enterPictureInPicture(result)
             }
+            "setShowNativeControls" -> {
+                val show = call.argument<Boolean>("show") ?: true
+                playerView.useController = show
+                result.success(null)
+            }
             else -> {
                 methodHandler.handleMethodCall(call, result)
             }

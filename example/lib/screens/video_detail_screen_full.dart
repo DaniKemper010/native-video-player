@@ -2,12 +2,14 @@ import 'package:better_native_video_player/better_native_video_player.dart';
 import 'package:flutter/material.dart';
 
 import '../models/video_item.dart';
+import '../widgets/custom_video_overlay.dart';
 
 class VideoDetailScreenFull extends StatefulWidget {
   final VideoItem video;
+  final bool useCustomOverlay;
   final NativeVideoPlayerController? controller;
 
-  const VideoDetailScreenFull({super.key, required this.video, this.controller});
+  const VideoDetailScreenFull({super.key, required this.video, this.controller, this.useCustomOverlay = false});
 
   @override
   State<VideoDetailScreenFull> createState() => _VideoDetailScreenFullState();
@@ -83,7 +85,6 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
     _controller = NativeVideoPlayerController(
       id: widget.video.id,
       autoPlay: false,
-      showNativeControls: true,
       mediaInfo: NativeVideoPlayerMediaInfo(title: widget.video.title, subtitle: widget.video.description),
     );
 
@@ -248,283 +249,286 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Column(
-          children: [
-            // Video Player
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Stack(
-                children: [
-                  NativeVideoPlayer(controller: _controller),
-                  // Back Button - hide in PiP mode
-                  if (!_isInPipMode)
-                    Positioned(
-                      left: 8,
-                      top: 8,
-                      child: Container(
-                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
-                        child: IconButton(
-                          icon: const Icon(Icons.arrow_back, color: Colors.white),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              // Video Player
+              AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Stack(
+                  children: [
+                    NativeVideoPlayer(
+                      key: ValueKey('native_video_player_${_controller.id}'),
+                      controller: _controller,
+                      overlayBuilder: widget.useCustomOverlay
+                          ? (context, controller) => CustomVideoOverlay(
+                              key: ValueKey('custom_overlay_${controller.id}'),
+                              controller: controller,
+                            )
+                          : null,
                     ),
-                ],
-              ),
-            ),
-
-            // Details Section - hide in PiP mode
-            if (!_isInPipMode)
-              Expanded(
-                child: Container(
-                  color: Colors.white,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Video Info
-                        Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.video.title,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                widget.video.description,
-                                style: TextStyle(fontSize: 15, color: Colors.grey[700], height: 1.5),
-                              ),
-                            ],
+                    // Back Button - hide in PiP mode
+                    if (!_isInPipMode)
+                      Positioned(
+                        left: 8,
+                        top: 8,
+                        child: Container(
+                          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
+                          child: IconButton(
+                            icon: const Icon(Icons.arrow_back, color: Colors.white),
+                            onPressed: () => Navigator.pop(context),
                           ),
                         ),
+                      ),
+                  ],
+                ),
+              ),
 
-                        const Divider(height: 1),
+              // Details Section - hide in PiP mode
+              if (!_isInPipMode)
+                Container(
+                  color: Colors.white,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Video Info
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.video.title,
+                              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              widget.video.description,
+                              style: TextStyle(fontSize: 15, color: Colors.grey[700], height: 1.5),
+                            ),
+                          ],
+                        ),
+                      ),
 
-                        // Playback Controls
-                        Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Playback Controls',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
-                              ),
-                              const SizedBox(height: 16),
+                      const Divider(height: 1),
 
-                              // Play/Pause/Skip
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.replay_10),
-                                    iconSize: 32,
-                                    onPressed: () => _controller.seekTo(_currentPosition - const Duration(seconds: 10)),
+                      // Playback Controls
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Playback Controls',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Play/Pause/Skip
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.replay_10),
+                                  iconSize: 32,
+                                  onPressed: () => _controller.seekTo(_currentPosition - const Duration(seconds: 10)),
+                                ),
+                                const SizedBox(width: 20),
+                                Container(
+                                  width: 64,
+                                  height: 64,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).primaryColor,
+                                    shape: BoxShape.circle,
                                   ),
-                                  const SizedBox(width: 20),
-                                  Container(
-                                    width: 64,
-                                    height: 64,
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context).primaryColor,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: _buildPlayPauseButton(),
-                                  ),
-                                  const SizedBox(width: 20),
-                                  IconButton(
-                                    icon: const Icon(Icons.forward_10),
-                                    iconSize: 32,
-                                    onPressed: () => _controller.seekTo(_currentPosition + const Duration(seconds: 10)),
-                                  ),
-                                ],
-                              ),
+                                  child: _buildPlayPauseButton(),
+                                ),
+                                const SizedBox(width: 20),
+                                IconButton(
+                                  icon: const Icon(Icons.forward_10),
+                                  iconSize: 32,
+                                  onPressed: () => _controller.seekTo(_currentPosition + const Duration(seconds: 10)),
+                                ),
+                              ],
+                            ),
 
-                              const SizedBox(height: 16),
+                            const SizedBox(height: 16),
 
-                              // Progress Slider
-                              Column(
-                                children: [
-                                  Slider(
-                                    value: _duration.inMilliseconds > 0
-                                        ? _currentPosition.inMilliseconds.toDouble().clamp(
-                                            0.0,
-                                            _duration.inMilliseconds.toDouble(),
-                                          )
-                                        : 0.0,
-                                    min: 0,
-                                    max: _duration.inMilliseconds > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
-                                    onChangeStart: (_) => _isSeeking = true,
+                            // Progress Slider
+                            Column(
+                              children: [
+                                Slider(
+                                  value: _duration.inMilliseconds > 0
+                                      ? _currentPosition.inMilliseconds.toDouble().clamp(
+                                          0.0,
+                                          _duration.inMilliseconds.toDouble(),
+                                        )
+                                      : 0.0,
+                                  min: 0,
+                                  max: _duration.inMilliseconds > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
+                                  onChangeStart: (_) => _isSeeking = true,
+                                  onChanged: (value) {
+                                    if (_isSeeking && _duration.inMilliseconds > 0) {
+                                      setState(() {
+                                        _currentPosition = Duration(milliseconds: value.toInt());
+                                      });
+                                    }
+                                  },
+                                  onChangeEnd: (value) {
+                                    if (_duration.inMilliseconds > 0) {
+                                      _controller.seekTo(Duration(milliseconds: value.toInt()));
+                                    }
+                                  },
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(_formatDuration(_currentPosition)),
+                                      Text(_formatDuration(_duration)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Volume Control
+                            Row(
+                              children: [
+                                Icon(Icons.volume_up, color: Colors.grey[700]),
+                                Expanded(
+                                  child: Slider(
+                                    value: _volume,
                                     onChanged: (value) {
-                                      if (_isSeeking && _duration.inMilliseconds > 0) {
-                                        setState(() {
-                                          _currentPosition = Duration(milliseconds: value.toInt());
-                                        });
-                                      }
-                                    },
-                                    onChangeEnd: (value) {
-                                      if (_duration.inMilliseconds > 0) {
-                                        _controller.seekTo(Duration(milliseconds: value.toInt()));
-                                      }
+                                      setState(() => _volume = value);
+                                      _controller.setVolume(value);
                                     },
                                   ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(_formatDuration(_currentPosition)),
-                                        Text(_formatDuration(_duration)),
-                                      ],
-                                    ),
+                                ),
+                                Text('${(_volume * 100).toInt()}%'),
+                              ],
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Speed and Quality
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Speed', style: TextStyle(color: Colors.grey[600])),
+                                      const SizedBox(height: 8),
+                                      DropdownButton<double>(
+                                        value: _playbackSpeed,
+                                        isExpanded: true,
+                                        items: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((speed) {
+                                          return DropdownMenuItem(value: speed, child: Text('${speed}x'));
+                                        }).toList(),
+                                        onChanged: (value) {
+                                          if (value != null) {
+                                            setState(() => _playbackSpeed = value);
+                                            _controller.setSpeed(value);
+                                          }
+                                        },
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              // Volume Control
-                              Row(
-                                children: [
-                                  Icon(Icons.volume_up, color: Colors.grey[700]),
-                                  Expanded(
-                                    child: Slider(
-                                      value: _volume,
-                                      onChanged: (value) {
-                                        setState(() => _volume = value);
-                                        _controller.setVolume(value);
-                                      },
-                                    ),
-                                  ),
-                                  Text('${(_volume * 100).toInt()}%'),
-                                ],
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              // Speed and Quality
-                              Row(
-                                children: [
+                                ),
+                                const SizedBox(width: 16),
+                                if (_qualities.isNotEmpty)
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text('Speed', style: TextStyle(color: Colors.grey[600])),
+                                        Text('Quality', style: TextStyle(color: Colors.grey[600])),
                                         const SizedBox(height: 8),
-                                        DropdownButton<double>(
-                                          value: _playbackSpeed,
+                                        DropdownButton<NativeVideoPlayerQuality>(
+                                          value: _currentQuality,
                                           isExpanded: true,
-                                          items: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((speed) {
-                                            return DropdownMenuItem(value: speed, child: Text('${speed}x'));
+                                          hint: const Text('Auto'),
+                                          items: _qualities.map((quality) {
+                                            return DropdownMenuItem(value: quality, child: Text(quality.label));
                                           }).toList(),
                                           onChanged: (value) {
                                             if (value != null) {
-                                              setState(() => _playbackSpeed = value);
-                                              _controller.setSpeed(value);
+                                              setState(() => _currentQuality = value);
+                                              _controller.setQuality(value);
                                             }
                                           },
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 16),
-                                  if (_qualities.isNotEmpty)
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Quality', style: TextStyle(color: Colors.grey[600])),
-                                          const SizedBox(height: 8),
-                                          DropdownButton<NativeVideoPlayerQuality>(
-                                            value: _currentQuality,
-                                            isExpanded: true,
-                                            hint: const Text('Auto'),
-                                            items: _qualities.map((quality) {
-                                              return DropdownMenuItem(value: quality, child: Text(quality.label));
-                                            }).toList(),
-                                            onChanged: (value) {
-                                              if (value != null) {
-                                                setState(() => _currentQuality = value);
-                                                _controller.setQuality(value);
-                                              }
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                ],
-                              ),
+                              ],
+                            ),
 
-                              const SizedBox(height: 16),
+                            const SizedBox(height: 16),
 
-                              // Additional Controls
-                              Row(
-                                children: [
+                            // Additional Controls
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _controller.toggleFullScreen(),
+                                    icon: const Icon(Icons.fullscreen),
+                                    label: const Text('Fullscreen'),
+                                  ),
+                                ),
+                                if (_isPipAvailable) ...[
+                                  const SizedBox(width: 12),
                                   Expanded(
                                     child: OutlinedButton.icon(
-                                      onPressed: () => _controller.toggleFullScreen(),
-                                      icon: const Icon(Icons.fullscreen),
-                                      label: const Text('Fullscreen'),
+                                      onPressed: () {
+                                        if (_isInPipMode) {
+                                          _controller.exitPictureInPicture();
+                                        } else {
+                                          _controller.enterPictureInPicture();
+                                        }
+                                      },
+                                      icon: const Icon(Icons.picture_in_picture_alt),
+                                      label: Text(_isInPipMode ? 'Exit PiP' : 'PiP'),
                                     ),
                                   ),
-                                  if (_isPipAvailable) ...[
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: () {
-                                          if (_isInPipMode) {
-                                            _controller.exitPictureInPicture();
-                                          } else {
-                                            _controller.enterPictureInPicture();
-                                          }
-                                        },
-                                        icon: const Icon(Icons.picture_in_picture_alt),
-                                        label: Text(_isInPipMode ? 'Exit PiP' : 'PiP'),
-                                      ),
-                                    ),
-                                  ],
                                 ],
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
+                          ],
                         ),
+                      ),
 
-                        const Divider(height: 1),
+                      const Divider(height: 1),
 
-                        // Statistics
-                        Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Video Statistics',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
-                              ),
-                              const SizedBox(height: 16),
-                              _buildStatRow('Duration', _formatDuration(_duration), Icons.access_time),
-                              const SizedBox(height: 12),
-                              _buildStatRow('Current Position', _formatDuration(_currentPosition), Icons.timer),
-                              const SizedBox(height: 12),
-                              _buildStatRow('Buffered', _formatDuration(_bufferedPosition), Icons.download_done),
-                              const SizedBox(height: 12),
-                              _buildStatRow('Available Qualities', '${_qualities.length}', Icons.high_quality),
-                            ],
-                          ),
+                      // Statistics
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Video Statistics',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildStatRow('Duration', _formatDuration(_duration), Icons.access_time),
+                            const SizedBox(height: 12),
+                            _buildStatRow('Current Position', _formatDuration(_currentPosition), Icons.timer),
+                            const SizedBox(height: 12),
+                            _buildStatRow('Buffered', _formatDuration(_bufferedPosition), Icons.download_done),
+                            const SizedBox(height: 12),
+                            _buildStatRow('Available Qualities', '${_qualities.length}', Icons.high_quality),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

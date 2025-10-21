@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-10-21
+
+### Added
+- **AirPlay Support (iOS)**: Complete AirPlay integration for streaming to Apple TV and AirPlay-enabled devices
+  - `isAirPlayAvailable()` method to check for available AirPlay devices
+  - `showAirPlayPicker()` method to display native AirPlay device picker
+  - `addAirPlayAvailabilityListener()` to monitor when AirPlay devices become available/unavailable
+  - `addAirPlayConnectionListener()` to track AirPlay connection state changes
+  - Automatic detection of AirPlay-enabled devices on the network
+  - Support for streaming video to multiple AirPlay receivers
+
+- **Custom Overlay Controls**: Build your own video player UI on top of the native player
+  - New `overlayBuilder` parameter in `NativeVideoPlayer` widget
+  - Full access to controller state for custom UI implementations
+  - Allows building custom controls while maintaining native video decoding performance
+  - Example implementation in `example/lib/widgets/custom_video_overlay.dart` with:
+    - Play/pause control
+    - Progress slider with buffered position indicator
+    - Speed controls (0.25x - 2.0x)
+    - Quality selector for HLS streams
+    - Fullscreen toggle
+    - Volume control
+    - AirPlay button (iOS)
+    - Auto-hide functionality
+
+- **Dart-side Fullscreen Management**: New `FullscreenManager` class for Flutter-based fullscreen
+  - `FullscreenVideoPlayer` widget for fullscreen video playback in a Flutter overlay
+  - `enterFullscreen()` and `exitFullscreen()` methods
+  - System UI management (hide/show status bar and navigation bar)
+  - Device orientation locking options
+  - Fullscreen dialog helper for easy integration
+  - Works alongside native fullscreen for maximum flexibility
+
+- **Buffered Position Tracking**: Real-time buffered position updates
+  - New `bufferedPosition` property in controller
+  - Included in `timeUpdated` control events
+  - Enables showing how much video has been preloaded
+  - Perfect for showing secondary progress indicator in custom overlays
+
+### Improved
+- Enhanced controller state management with better activity and control state tracking
+- Improved fullscreen state synchronization between native and Dart layers
+- Better event listener management with separate activity and control listeners
+- Enhanced example app with new `video_with_overlay_screen.dart` demonstrating custom controls
+- Improved documentation with comprehensive AirPlay and custom overlay usage examples
+- Better error handling and state validation throughout the player lifecycle
+
+### Documentation
+- Updated README with comprehensive sections on AirPlay and custom overlays
+- Added example code for all new features
+
 ## [0.1.4] - 2025-10-20
 
 ### Fixed

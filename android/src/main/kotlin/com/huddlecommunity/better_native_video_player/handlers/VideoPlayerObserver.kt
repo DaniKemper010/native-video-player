@@ -60,13 +60,17 @@ class VideoPlayerObserver(
                 // Player is idle
             }
             Player.STATE_BUFFERING -> {
-                eventHandler.sendEvent("buffering")
+                // Buffering is now primarily handled by onIsLoadingChanged
+                // But we keep this as a fallback for older ExoPlayer versions
+                if (!player.isLoading) {
+                    eventHandler.sendEvent("buffering")
+                }
             }
             Player.STATE_READY -> {
-                eventHandler.sendEvent("loading")
-                // Send initial duration when player is ready
+                // Ready state is handled by onIsLoadingChanged when loading finishes
+                // But send loaded event with duration here as it's state-specific
                 val duration = player.duration.toInt()
-                if (duration > 0) {
+                if (duration > 0 && !player.isLoading) {
                     eventHandler.sendEvent("loaded", mapOf("duration" to duration))
                 }
             }
@@ -85,6 +89,26 @@ class VideoPlayerObserver(
             // When seeking to unbuffered position, isPlaying becomes false but player is buffering
             // We should not report this as a pause - the buffering event will be sent instead
             if (player.playbackState != Player.STATE_BUFFERING) {
+                eventHandler.sendEvent("pause")
+            }
+        }
+    }
+
+    override fun onIsLoadingChanged(isLoading: Boolean) {
+        Log.d(TAG, "Is loading changed: $isLoading, playbackState: ${player.playbackState}, isPlaying: ${player.isPlaying}")
+        // This is important for detecting buffering when seeking while paused
+        // isLoading is true when the player is actively loading data regardless of play/pause state
+        if (isLoading) {
+            eventHandler.sendEvent("buffering")
+        } else if (player.playbackState == Player.STATE_READY) {
+            // Send loading event when player becomes ready after loading
+            eventHandler.sendEvent("loading")
+            
+            // Restore the playback state after buffering completes
+            // This tells the UI whether the video is playing or paused
+            if (player.isPlaying) {
+                eventHandler.sendEvent("play")
+            } else {
                 eventHandler.sendEvent("pause")
             }
         }

@@ -10,6 +10,9 @@ extension VideoPlayerView {
         // Observe player's timeControlStatus to track play/pause state changes
         player?.addObserver(self, forKeyPath: "timeControlStatus", options: [.new, .old], context: nil)
 
+        // Observe AirPlay connection status
+        player?.addObserver(self, forKeyPath: "externalPlaybackActive", options: [.new, .initial], context: nil)
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(playerItemFailedToPlay),
@@ -40,16 +43,26 @@ extension VideoPlayerView {
                 default: break
                 }
             case "playbackBufferEmpty":
-                // For shared players, ignore buffering events when reattaching
-                // Only send buffering if the player is actually playing
-                if item.isPlaybackBufferEmpty && (!isSharedPlayer || player?.timeControlStatus == .playing) {
+                // Send buffering event when buffer is empty
+                // This is important for seeking while paused
+                if item.isPlaybackBufferEmpty {
                     sendEvent("buffering")
                 }
             case "playbackLikelyToKeepUp":
-                // For shared players, ignore loading events when reattaching
-                // Only send loading if the player is actually playing
-                if item.isPlaybackLikelyToKeepUp && (!isSharedPlayer || player?.timeControlStatus == .playing) {
+                // Send loading event when buffer is ready, then restore playback state
+                // This is important for seeking while paused - user needs to know buffering is done
+                if item.isPlaybackLikelyToKeepUp {
                     sendEvent("loading")
+                    
+                    // Restore the playback state after buffering completes
+                    // This tells the UI whether the video is playing or paused
+                    if let player = player {
+                        if player.rate > 0 && player.timeControlStatus == .playing {
+                            sendEvent("play")
+                        } else if player.timeControlStatus == .paused && player.reasonForWaitingToPlay == nil {
+                            sendEvent("pause")
+                        }
+                    }
                 }
             default: break
             }
@@ -76,7 +89,25 @@ extension VideoPlayerView {
                 @unknown default:
                     break
                 }
+            case "externalPlaybackActive":
+                guard let player = player else { return }
+                let isActive = player.isExternalPlaybackActive
+                print("AVPlayer externalPlaybackActive changed to: \(isActive)")
+                sendEvent("airPlayConnectionChanged", data: ["isConnected": isActive])
             default: break
+            }
+        }
+
+        // Handle AVRouteDetector observations
+        if #available(iOS 11.0, *) {
+            if let detector = object as? AVRouteDetector, detector == routeDetector {
+                switch keyPath {
+                case "multipleRoutesDetected":
+                    let isAvailable = routeDetector?.multipleRoutesDetected ?? false
+                    print("AVRouteDetector multipleRoutesDetected changed to: \(isAvailable)")
+                    sendEvent("airPlayAvailabilityChanged", data: ["isAvailable": isAvailable])
+                default: break
+                }
             }
         }
     }
@@ -91,5 +122,34 @@ extension VideoPlayerView {
 
     @objc func videoDidEnd() {
         sendEvent("completed")
+    }
+
+    // MARK: - AirPlay Route Detection
+
+    /// Sets up AVRouteDetector to monitor AirPlay availability
+    @available(iOS 11.0, *)
+    func setupAirPlayRouteDetector() {
+        print("Setting up AirPlay route detector")
+        routeDetector = AVRouteDetector()
+        routeDetector?.isRouteDetectionEnabled = true
+
+        // Observe changes to multipleRoutesDetected
+        routeDetector?.addObserver(
+            self,
+            forKeyPath: "multipleRoutesDetected",
+            options: [.new, .initial],
+            context: nil
+        )
+
+        print("AirPlay route detector setup complete, multipleRoutesDetected: \(routeDetector?.multipleRoutesDetected ?? false)")
+    }
+
+    /// Observes AirPlay route availability changes
+    @objc func handleAirPlayRouteChange() {
+        if #available(iOS 11.0, *) {
+            if let isAvailable = routeDetector?.multipleRoutesDetected {
+                sendEvent("airPlayAvailabilityChanged", data: ["isAvailable": isAvailable])
+            }
+        }
     }
 }

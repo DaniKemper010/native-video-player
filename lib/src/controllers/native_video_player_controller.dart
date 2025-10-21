@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../enums/native_video_player_event.dart';
+import '../fullscreen/fullscreen_manager.dart';
+import '../fullscreen/fullscreen_video_player.dart';
 import '../models/native_video_player_media_info.dart';
 import '../models/native_video_player_quality.dart';
 import '../models/native_video_player_state.dart';
@@ -34,7 +36,7 @@ class NativeVideoPlayerController {
     this.mediaInfo,
     this.allowsPictureInPicture = true,
     this.canStartPictureInPictureAutomatically = true,
-    this.showNativeControls = true,
+    this.lockToLandscape = true,
   });
 
   /// Initialize the controller and wait for the platform view to be created
@@ -58,6 +60,9 @@ class NativeVideoPlayerController {
   /// Whether to start playing automatically when initialized
   final bool autoPlay;
 
+  /// Whether to lock orientation to landscape in fullscreen mode
+  final bool lockToLandscape;
+
   /// Optional media information (title, subtitle, artwork) for Now Playing display
   final NativeVideoPlayerMediaInfo? mediaInfo;
 
@@ -67,8 +72,33 @@ class NativeVideoPlayerController {
   /// Whether PiP can start automatically when app goes to background (iOS 14.2+)
   final bool canStartPictureInPictureAutomatically;
 
-  /// Whether to show the native video player controls
-  final bool showNativeControls;
+  /// BuildContext getter for showing Dart fullscreen dialog
+  /// Returns a mounted context from any registered platform view
+  BuildContext? get _fullscreenContext {
+    // Try to find a mounted context from the registered platform views
+    for (final viewId in _platformViewIds) {
+      // We'll need to track contexts per platform view
+      final ctx = _platformViewContexts[viewId];
+      if (ctx != null && ctx.mounted) {
+        return ctx;
+      }
+    }
+    return null;
+  }
+
+  /// Map of platform view IDs to their contexts
+  final Map<int, BuildContext> _platformViewContexts = <int, BuildContext>{};
+
+  /// Overlay builder to use in fullscreen mode
+  /// This is passed from NativeVideoPlayer widget
+  Widget Function(BuildContext, NativeVideoPlayerController)? _overlayBuilder;
+
+  /// Callback to close the Dart fullscreen dialog
+  /// Set by FullscreenVideoPlayer when it's created
+  VoidCallback? _dartFullscreenCloseCallback;
+
+  /// Whether we have a custom overlay (determines if we use Dart fullscreen and hide native controls)
+  bool get _hasCustomOverlay => _overlayBuilder != null;
 
   /// Current state of the video player
   NativeVideoPlayerState _state = const NativeVideoPlayerState();
@@ -82,8 +112,14 @@ class NativeVideoPlayerController {
   /// Set of platform view IDs that are using this controller
   final Set<int> _platformViewIds = <int>{};
 
-  /// Primary platform view ID (first one registered)
+  /// Primary platform view ID (most recent one registered)
   int? _primaryPlatformViewId;
+
+  /// Updates the method channel to use the specified platform view ID
+  void _updateMethodChannel(int platformViewId) {
+    _primaryPlatformViewId = platformViewId;
+    _methodChannel = VideoPlayerMethodChannel(primaryPlatformViewId: platformViewId);
+  }
 
   /// Completer to wait for initialization to complete
   Completer<void>? _initializeCompleter;
@@ -167,10 +203,29 @@ class NativeVideoPlayerController {
     'autoPlay': autoPlay,
     'allowsPictureInPicture': allowsPictureInPicture,
     'canStartPictureInPictureAutomatically': canStartPictureInPictureAutomatically,
-    'showNativeControls': showNativeControls,
+    'showNativeControls': !_hasCustomOverlay, // Hide native controls if we have custom overlay
     'isFullScreen': _state.isFullScreen,
     if (mediaInfo != null) 'mediaInfo': mediaInfo!.toMap(),
   };
+
+  /// Sets the overlay builder for fullscreen mode
+  ///
+  /// This is typically called by NativeVideoPlayer widget to pass the overlay builder.
+  /// When an overlay is set, native controls are automatically hidden and Dart fullscreen is used.
+  void setOverlayBuilder(Widget Function(BuildContext, NativeVideoPlayerController)? builder) {
+    _overlayBuilder = builder;
+
+    // If we have a method channel, hide native controls when overlay is set
+    if (_hasCustomOverlay && _methodChannel != null) {
+      setShowNativeControls(false);
+    }
+  }
+
+  /// Sets the callback for closing Dart fullscreen
+  /// This is called by FullscreenVideoPlayer to register itself
+  void setDartFullscreenCloseCallback(VoidCallback? callback) {
+    _dartFullscreenCloseCallback = callback;
+  }
 
   /// Called when a native platform view is created
   ///
@@ -183,11 +238,12 @@ class NativeVideoPlayerController {
   Future<void> onPlatformViewCreated(int platformViewId, BuildContext context) async {
     _platformViewIds.add(platformViewId);
 
-    // Set up method channel only once (for the first platform view)
-    if (_primaryPlatformViewId == null) {
-      _primaryPlatformViewId = platformViewId;
-      _methodChannel = VideoPlayerMethodChannel(primaryPlatformViewId: platformViewId);
-    }
+    // Store context for Dart fullscreen
+    _platformViewContexts[platformViewId] = context;
+
+    // Always update to use the most recent platform view
+    // This ensures commands go to the active view
+    _updateMethodChannel(platformViewId);
 
     // IMPORTANT: Set up event channel for EVERY platform view
     // This ensures that both the original and fullscreen widgets receive events
@@ -198,6 +254,24 @@ class NativeVideoPlayerController {
       (dynamic eventMap) async {
         final map = eventMap as Map<dynamic, dynamic>;
         final String eventName = map['event'] as String;
+
+        // Handle AirPlay availability change event
+        if (eventName == 'airPlayAvailabilityChanged') {
+          final bool isAvailable = map['isAvailable'] as bool? ?? false;
+          for (final handler in _airPlayAvailabilityHandlers) {
+            handler(isAvailable);
+          }
+          return;
+        }
+
+        // Handle AirPlay connection change event
+        if (eventName == 'airPlayConnectionChanged') {
+          final bool isConnected = map['isConnected'] as bool? ?? false;
+          for (final handler in _airPlayConnectionHandlers) {
+            handler(isConnected);
+          }
+          return;
+        }
 
         // Determine if this is an activity event or control event
         final isActivityEvent = _isActivityEvent(eventName);
@@ -329,14 +403,39 @@ class NativeVideoPlayerController {
           }
         },
         onError: (dynamic error) {
-          debugPrint('MainActivity PiP event channel error: $error');
+          // Silently handle MainActivity PiP event channel errors
         },
       );
     } catch (e) {
-      // Log any errors during setup
-      debugPrint('Error setting up MainActivity PiP event channel: $e');
+      // Silently handle setup errors
     }
   }
+
+  /// Callback for AirPlay availability changes
+  final List<void Function(bool isAvailable)> _airPlayAvailabilityHandlers = <void Function(bool)>[];
+
+  /// Callback for AirPlay connection changes
+  final List<void Function(bool isConnected)> _airPlayConnectionHandlers = <void Function(bool)>[];
+
+  /// Adds a listener for AirPlay availability changes
+  void addAirPlayAvailabilityListener(void Function(bool) listener) {
+    if (!_airPlayAvailabilityHandlers.contains(listener)) {
+      _airPlayAvailabilityHandlers.add(listener);
+    }
+  }
+
+  /// Removes a listener for AirPlay availability changes
+  void removeAirPlayAvailabilityListener(void Function(bool) listener) => _airPlayAvailabilityHandlers.remove(listener);
+
+  /// Adds a listener for AirPlay connection changes (when video connects/disconnects to AirPlay)
+  void addAirPlayConnectionListener(void Function(bool) listener) {
+    if (!_airPlayConnectionHandlers.contains(listener)) {
+      _airPlayConnectionHandlers.add(listener);
+    }
+  }
+
+  /// Removes a listener for AirPlay connection changes
+  void removeAirPlayConnectionListener(void Function(bool) listener) => _airPlayConnectionHandlers.remove(listener);
 
   /// Determines if an event name is an activity event
   bool _isActivityEvent(String eventName) {
@@ -365,21 +464,21 @@ class NativeVideoPlayerController {
   /// - platformViewId: The ID of the platform view being disposed
   void onPlatformViewDisposed(int platformViewId) {
     _platformViewIds.remove(platformViewId);
+    _platformViewContexts.remove(platformViewId);
 
     // Cancel the event channel subscription for this platform view
     unawaited(_eventSubscriptions[platformViewId]?.cancel() ?? Future<void>.value());
     _eventSubscriptions.remove(platformViewId);
 
-    // If the primary view was disposed, promote another view to primary
-    if (_primaryPlatformViewId == platformViewId) {
+    // If the disposed view was the primary view, switch to another active view
+    if (_primaryPlatformViewId == platformViewId && _platformViewIds.isNotEmpty) {
+      // Use the most recent remaining view
+      final newPrimaryViewId = _platformViewIds.last;
+      _updateMethodChannel(newPrimaryViewId);
+    } else if (_platformViewIds.isEmpty) {
+      // No views left, clear everything
       _primaryPlatformViewId = null;
-
-      // If there are other views, we need to reinitialize with a new primary
-      if (_platformViewIds.isNotEmpty) {
-        // Mark as needing reinitialization for the next view
-        _updateState(_state.copyWith(activityState: PlayerActivityState.idle));
-        _methodChannel = null;
-      }
+      _methodChannel = null;
     }
   }
 
@@ -433,7 +532,6 @@ class NativeVideoPlayerController {
         }
       }
     } catch (e) {
-      debugPrint('Error loading video: $e');
       rethrow;
     }
   }
@@ -498,7 +596,7 @@ class NativeVideoPlayerController {
   }
 
   /// Enters fullscreen mode
-  /// Triggers native fullscreen on both Android and iOS
+  /// Uses Dart fullscreen if custom overlay is present, otherwise uses native fullscreen
   Future<void> enterFullScreen() async {
     if (_state.isFullScreen) {
       return;
@@ -506,11 +604,26 @@ class NativeVideoPlayerController {
 
     _updateState(_state.copyWith(isFullScreen: true));
 
-    await _methodChannel?.enterFullScreen();
+    if (_hasCustomOverlay && _fullscreenContext != null) {
+      // Emit fullscreen entered event
+      final controlEvent = PlayerControlEvent(
+        state: PlayerControlState.fullscreenEntered,
+        data: <String, dynamic>{'isFullscreen': true},
+      );
+      for (final handler in _controlEventHandlers) {
+        handler(controlEvent);
+      }
+
+      // Use Dart fullscreen when we have a custom overlay
+      await _enterDartFullscreen();
+    } else {
+      // Use native fullscreen when no custom overlay
+      await _methodChannel?.enterFullScreen();
+    }
   }
 
   /// Exits fullscreen mode
-  /// Triggers native fullscreen exit on both Android and iOS
+  /// Handles both Dart and native fullscreen exit
   Future<void> exitFullScreen() async {
     if (!_state.isFullScreen) {
       return;
@@ -518,7 +631,48 @@ class NativeVideoPlayerController {
 
     _updateState(_state.copyWith(isFullScreen: false));
 
-    await _methodChannel?.exitFullScreen();
+    if (_hasCustomOverlay) {
+      // Dart fullscreen: use dedicated callback to close the dialog
+      _dartFullscreenCloseCallback?.call();
+
+      // Emit event for other listeners (but don't use it to close the dialog)
+      final controlEvent = PlayerControlEvent(
+        state: PlayerControlState.fullscreenExited,
+        data: <String, dynamic>{'isFullscreen': false},
+      );
+      for (final handler in _controlEventHandlers) {
+        handler(controlEvent);
+      }
+    } else {
+      // Use native fullscreen
+      await _methodChannel?.exitFullScreen();
+    }
+  }
+
+  /// Enters Dart-based fullscreen mode
+  Future<void> _enterDartFullscreen() async {
+    final context = _fullscreenContext;
+
+    if (context == null) {
+      // Fallback: reset state since we can't show fullscreen
+      _updateState(_state.copyWith(isFullScreen: false));
+      return;
+    }
+
+    await FullscreenManager.showFullscreenDialog(
+      context: context,
+      builder: (dialogContext) {
+        return FullscreenVideoPlayer(controller: this, overlayBuilder: _overlayBuilder);
+      },
+      lockToLandscape: lockToLandscape,
+      onExit: () {
+        // Update state when fullscreen dialog is dismissed by user (back button, etc.)
+        _dartFullscreenCloseCallback = null;
+        if (_state.isFullScreen) {
+          _updateState(_state.copyWith(isFullScreen: false));
+        }
+      },
+    );
   }
 
   /// Toggles fullscreen mode
@@ -528,6 +682,46 @@ class NativeVideoPlayerController {
     } else {
       await enterFullScreen();
     }
+  }
+
+  /// Sets whether native player controls are shown
+  ///
+  /// This is useful when you want to use custom overlay controls instead of
+  /// the native player controls.
+  ///
+  /// **Parameters:**
+  /// - show: true to show native controls, false to hide them
+  Future<void> setShowNativeControls(bool show) async {
+    await _methodChannel?.setShowNativeControls(show);
+  }
+
+  /// Checks if AirPlay is available on the device
+  ///
+  /// This is only available on iOS. On Android, this always returns false.
+  /// Use this method to conditionally show/hide AirPlay buttons in your UI.
+  ///
+  /// **Returns:**
+  /// A Future that resolves to true if AirPlay is available, false otherwise
+  Future<bool> isAirPlayAvailable() async {
+    if (_methodChannel == null) {
+      return false;
+    }
+    return await _methodChannel!.isAirPlayAvailable();
+  }
+
+  /// Shows the AirPlay route picker for selecting AirPlay devices
+  ///
+  /// This is only available on iOS. On Android, this method does nothing.
+  /// Displays the native iOS AirPlay picker UI to allow users to select
+  /// an AirPlay device for video output.
+  ///
+  /// **Returns:**
+  /// A Future that completes when the picker is shown (or immediately on Android)
+  Future<void> showAirPlayPicker() async {
+    if (_methodChannel == null) {
+      return;
+    }
+    await _methodChannel!.showAirPlayPicker();
   }
 
   /// Disposes of resources and cleans up platform channels

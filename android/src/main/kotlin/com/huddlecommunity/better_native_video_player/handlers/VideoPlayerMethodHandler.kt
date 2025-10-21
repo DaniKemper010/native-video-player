@@ -54,6 +54,8 @@ class VideoPlayerMethodHandler(
             "getAvailableQualities" -> handleGetAvailableQualities(result)
             "enterFullScreen" -> handleEnterFullScreen(result)
             "exitFullScreen" -> handleExitFullScreen(result)
+            "isAirPlayAvailable" -> handleIsAirPlayAvailable(result)
+            "showAirPlayPicker" -> handleShowAirPlayPicker(result)
             "dispose" -> handleDispose(result)
             else -> result.notImplemented()
         }
@@ -348,6 +350,26 @@ class VideoPlayerMethodHandler(
     private fun handleExitFullScreen(result: MethodChannel.Result) {
         Log.d(TAG, "Flutter requested exit fullscreen")
         onFullscreenRequest?.invoke(false)
+        result.success(null)
+    }
+
+    /**
+     * Checks if AirPlay is available (iOS only - always false on Android)
+     * AirPlay is an Apple technology and not available on Android
+     */
+    private fun handleIsAirPlayAvailable(result: MethodChannel.Result) {
+        Log.d(TAG, "AirPlay availability checked - not supported on Android")
+        // AirPlay is not available on Android
+        result.success(false)
+    }
+
+    /**
+     * Shows AirPlay picker (iOS only - no-op on Android)
+     * AirPlay is an Apple technology and not available on Android
+     */
+    private fun handleShowAirPlayPicker(result: MethodChannel.Result) {
+        Log.d(TAG, "AirPlay picker requested but not supported on Android")
+        // Simply return success - AirPlay is not available on Android
         result.success(null)
     }
 }

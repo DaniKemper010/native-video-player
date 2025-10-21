@@ -40,7 +40,7 @@ class VideoPlayerMethodChannel {
     try {
       await _methodChannel.invokeMethod<void>('play', <String, Object>{'viewId': primaryPlatformViewId});
     } catch (e) {
-      debugPrint('Error calling play: $e');
+      // Silently handle errors
     }
   }
 
@@ -102,16 +102,13 @@ class VideoPlayerMethodChannel {
   /// Gets available video qualities
   Future<List<NativeVideoPlayerQuality>> getAvailableQualities() async {
     try {
-      debugPrint('Fetching available qualities...');
       final dynamic result = await _methodChannel.invokeMethod<dynamic>('getAvailableQualities', <String, Object>{
         'viewId': primaryPlatformViewId,
       });
-      debugPrint('Got qualities result: $result');
       if (result is List) {
         final qualities = result
             .map((dynamic e) => NativeVideoPlayerQuality.fromMap(e as Map<dynamic, dynamic>))
             .toList();
-        debugPrint('Parsed qualities: $qualities');
         return qualities;
       }
       debugPrint('No qualities found in result');
@@ -176,6 +173,42 @@ class VideoPlayerMethodChannel {
       await _methodChannel.invokeMethod<void>('exitFullScreen', <String, Object>{'viewId': primaryPlatformViewId});
     } catch (e) {
       debugPrint('Error calling exitFullScreen: $e');
+    }
+  }
+
+  /// Sets whether native player controls are shown
+  Future<void> setShowNativeControls(bool show) async {
+    try {
+      await _methodChannel.invokeMethod<void>('setShowNativeControls', <String, Object>{
+        'viewId': primaryPlatformViewId,
+        'show': show,
+      });
+    } catch (e) {
+      debugPrint('Error calling setShowNativeControls: $e');
+    }
+  }
+
+  /// Checks if AirPlay is available (iOS only)
+  Future<bool> isAirPlayAvailable() async {
+    try {
+      final dynamic result = await _methodChannel.invokeMethod<dynamic>('isAirPlayAvailable', <String, Object>{
+        'viewId': primaryPlatformViewId,
+      });
+      return result == true;
+    } catch (e) {
+      debugPrint('Error calling isAirPlayAvailable: $e');
+      return false;
+    }
+  }
+
+  /// Shows the AirPlay route picker (iOS only)
+  Future<void> showAirPlayPicker() async {
+    try {
+      await _methodChannel.invokeMethod<void>('showAirPlayPicker', <String, Object>{
+        'viewId': primaryPlatformViewId,
+      });
+    } catch (e) {
+      debugPrint('Error calling showAirPlayPicker: $e');
     }
   }
 }
