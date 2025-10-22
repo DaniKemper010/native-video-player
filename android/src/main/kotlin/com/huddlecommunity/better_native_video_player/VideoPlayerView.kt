@@ -58,6 +58,9 @@ class VideoPlayerView(
     private val notificationHandler: VideoPlayerNotificationHandler
     private val methodHandler: VideoPlayerMethodHandler
     private val observer: VideoPlayerObserver
+    
+    // Store media info for updating notification when playback starts
+    private var currentMediaInfo: Map<String, Any>? = null
 
     // Channels
     private val eventChannel: EventChannel
@@ -96,6 +99,14 @@ class VideoPlayerView(
         canStartPictureInPictureAutomatically = args?.get("canStartPictureInPictureAutomatically") as? Boolean ?: false
         showNativeControlsOriginal = args?.get("showNativeControls") as? Boolean ?: true
         Log.d(TAG, "PiP settings - allows: $allowsPictureInPicture, autoStart: $canStartPictureInPictureAutomatically, showControls: $showNativeControlsOriginal")
+        
+        // Extract and store media info from args (if provided during initialization)
+        // This ensures we have the correct media info even for shared players
+        currentMediaInfo = args?.get("mediaInfo") as? Map<String, Any>
+        currentMediaInfo?.let { mediaInfo ->
+            val title = mediaInfo["title"] as? String
+            Log.d(TAG, "📱 Stored media info during init: $title")
+        }
 
         // Get or create shared player
         val isSharedPlayer: Boolean
@@ -188,16 +199,35 @@ class VideoPlayerView(
             VideoPlayerNotificationHandler(context, player, eventHandler)
         }
 
-        // Setup method handler
-        methodHandler = VideoPlayerMethodHandler(player, eventHandler, notificationHandler)
+        // Setup method handler with callback to update media info
+        methodHandler = VideoPlayerMethodHandler(
+            context = context,
+            player = player,
+            eventHandler = eventHandler,
+            notificationHandler = notificationHandler,
+            updateMediaInfo = { mediaInfo -> currentMediaInfo = mediaInfo }
+        )
 
         // Set fullscreen callback for method handler
         methodHandler.onFullscreenRequest = { enterFullscreen ->
             handleFullscreenToggleNative(enterFullscreen)
         }
 
-        // Setup observer
-        observer = VideoPlayerObserver(player, eventHandler)
+        // Set PiP callbacks for method handler
+        methodHandler.onEnterPictureInPictureRequest = {
+            enterPictureInPictureInternal()
+        }
+        methodHandler.onExitPictureInPictureRequest = {
+            exitPictureInPictureInternal()
+        }
+
+        // Setup observer with notification handler and media info getter
+        observer = VideoPlayerObserver(
+            player = player,
+            eventHandler = eventHandler,
+            notificationHandler = notificationHandler,
+            getMediaInfo = { currentMediaInfo }
+        )
         player.addListener(observer)
 
         // Setup event channel
@@ -246,12 +276,6 @@ class VideoPlayerView(
      */
     fun handleMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "isPictureInPictureAvailable" -> {
-                checkPictureInPictureAvailability(result)
-            }
-            "enterPictureInPicture" -> {
-                enterPictureInPicture(result)
-            }
             "setShowNativeControls" -> {
                 val show = call.argument<Boolean>("show") ?: true
                 playerView.useController = show
@@ -263,34 +287,6 @@ class VideoPlayerView(
         }
     }
 
-    /**
-     * Checks if Picture-in-Picture is available on this device
-     */
-    private fun checkPictureInPictureAvailability(result: MethodChannel.Result) {
-        Log.d(TAG, "Checking PiP availability - Android version: ${android.os.Build.VERSION.SDK_INT}")
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            // Try to get activity from plugin first
-            val pluginActivity = NativeVideoPlayerPlugin.getActivity()
-            val activity = pluginActivity ?: getActivity(context)
-
-            if (activity != null) {
-                Log.d(TAG, "Activity found: ${activity.javaClass.simpleName}")
-                val packageManager = activity.packageManager
-                val hasPipFeature = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
-                Log.d(TAG, "PiP feature available: $hasPipFeature")
-                result.success(hasPipFeature)
-            } else {
-                Log.e(TAG, "No activity found, cannot check PiP availability")
-                // On Android 8+, PiP should be available even if we can't get the activity
-                // Return true and let enterPictureInPicture fail if it's not actually available
-                result.success(true)
-            }
-        } else {
-            Log.d(TAG, "Android version too old for PiP (< 8.0)")
-            result.success(false)
-        }
-    }
 
     /**
      * Handles fullscreen toggle natively by moving the player view between container and fullscreen dialog
@@ -563,7 +559,11 @@ class VideoPlayerView(
     /**
      * Enter Picture-in-Picture mode
      */
-    private fun enterPictureInPicture(result: MethodChannel.Result) {
+    /**
+     * Enters Picture-in-Picture mode (internal method called by methodHandler)
+     * Returns true if PiP was entered successfully, false otherwise
+     */
+    private fun enterPictureInPictureInternal(): Boolean {
         Log.d(TAG, "Attempting to enter PiP mode")
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -601,20 +601,52 @@ class VideoPlayerView(
 
                 if (entered) {
                     eventHandler.sendEvent("pipStart", mapOf("isPictureInPicture" to true))
-                    result.success(true)
+                    return true
                 } else {
                     // Restore controls if PiP failed
                     playerView.useController = showNativeControlsOriginal
                     Log.e(TAG, "Failed to enter PiP mode")
-                    result.error("PIP_FAILED", "Failed to enter PiP mode", null)
+                    return false
                 }
             } else {
                 Log.e(TAG, "No activity found for PiP")
-                result.error("NO_ACTIVITY", "Context is not an Activity", null)
+                return false
             }
         } else {
             Log.e(TAG, "PiP not supported on Android version: ${android.os.Build.VERSION.SDK_INT}")
-            result.error("NOT_SUPPORTED", "PiP not supported on this Android version", null)
+            return false
+        }
+    }
+
+    /**
+     * Exits Picture-in-Picture mode (internal method called by methodHandler)
+     * Returns true if PiP was exited successfully, false otherwise
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun exitPictureInPictureInternal(): Boolean {
+        Log.d(TAG, "Attempting to exit PiP mode")
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            val pluginActivity = NativeVideoPlayerPlugin.getActivity()
+            val activity = pluginActivity ?: getActivity(context)
+
+            if (activity != null && activity.isInPictureInPictureMode) {
+                Log.d(TAG, "Activity is in PiP mode, exiting...")
+                // Restore controls when exiting PiP
+                playerView.useController = showNativeControlsOriginal
+                playerView.showController()
+                
+                // Exit PiP by going back to normal mode (no direct API for this)
+                // The system will call onPictureInPictureModeChanged which we handle in the observer
+                eventHandler.sendEvent("pipStop", mapOf("isPictureInPicture" to false))
+                return true
+            } else {
+                Log.d(TAG, "Activity not in PiP mode")
+                return false
+            }
+        } else {
+            Log.e(TAG, "PiP not supported on Android version: ${android.os.Build.VERSION.SDK_INT}")
+            return false
         }
     }
 

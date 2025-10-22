@@ -76,6 +76,12 @@ extension VideoPlayerView {
 
                 switch player.timeControlStatus {
                 case .playing:
+                    // Update Now Playing info when playback starts
+                    // This ensures it's updated even when native controls are used
+                    if let mediaInfo = currentMediaInfo {
+                        print("📱 [Observer] Player started playing, updating Now Playing info for: \(mediaInfo["title"] ?? "Unknown")")
+                        setupNowPlayingInfo(mediaInfo: mediaInfo)
+                    }
                     sendEvent("play")
                 case .paused:
                     // Only send pause if not waiting to play (buffering)

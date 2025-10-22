@@ -141,18 +141,45 @@ extension VideoPlayerView {
 
     /// Updates playback time and rate dynamically (e.g., every second or on state change)
     func updateNowPlayingPlaybackTime() {
-        guard var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo else {
+        guard let player = player else {
             return
         }
 
-        if let currentTime = player?.currentTime() {
-            let elapsedSeconds = CMTimeGetSeconds(currentTime)
-            if elapsedSeconds.isFinite {
-                nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedSeconds
+        let isPlaying = player.rate > 0
+        let currentNowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        
+        // Check if this player owns the current Now Playing info by comparing titles
+        let ownsNowPlayingInfo: Bool = {
+            guard let currentInfo = currentNowPlayingInfo,
+                  let currentTitle = currentInfo[MPMediaItemPropertyTitle] as? String,
+                  let ourTitle = currentMediaInfo?["title"] as? String else {
+                // If there's no existing info, we can take ownership if we're playing
+                return isPlaying
             }
+            return currentTitle == ourTitle
+        }()
+
+        // Only allow updates if:
+        // 1. This player is playing (active players always have priority), OR
+        // 2. This player owns the current Now Playing info (can update our own info even when paused)
+        if !isPlaying && !ownsNowPlayingInfo {
+            // This is a paused player that doesn't own the Now Playing info - don't interfere
+            if let ourTitle = currentMediaInfo?["title"] as? String,
+               let currentTitle = currentNowPlayingInfo?[MPMediaItemPropertyTitle] as? String {
+                print("⏸️ [\(ourTitle)] Skipping update - Now Playing is: \(currentTitle)")
+            }
+            return
         }
 
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player?.rate ?? 0.0
+        var nowPlayingInfo = currentNowPlayingInfo ?? [:]
+
+        let currentTime = player.currentTime()
+        let elapsedSeconds = CMTimeGetSeconds(currentTime)
+        if elapsedSeconds.isFinite {
+            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedSeconds
+        }
+
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player.rate
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 }

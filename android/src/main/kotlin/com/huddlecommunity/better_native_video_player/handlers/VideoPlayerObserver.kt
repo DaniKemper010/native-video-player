@@ -12,7 +12,9 @@ import androidx.media3.common.Player
  */
 class VideoPlayerObserver(
     private val player: Player,
-    private val eventHandler: VideoPlayerEventHandler
+    private val eventHandler: VideoPlayerEventHandler,
+    private val notificationHandler: com.huddlecommunity.better_native_video_player.handlers.VideoPlayerNotificationHandler? = null,
+    private val getMediaInfo: (() -> Map<String, Any>?)? = null
 ) : Player.Listener {
 
     companion object {
@@ -83,6 +85,14 @@ class VideoPlayerObserver(
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         Log.d(TAG, "Is playing changed: $isPlaying, playbackState: ${player.playbackState}")
         if (isPlaying) {
+            // Update media session/notification when playback starts
+            // This ensures it's updated even when native controls are used
+            val mediaInfo = getMediaInfo?.invoke()
+            if (mediaInfo != null && notificationHandler != null) {
+                val title = mediaInfo["title"] as? String
+                Log.d(TAG, "📱 [Observer] Player started playing, updating media session for: $title")
+                notificationHandler.setupMediaSession(mediaInfo)
+            }
             eventHandler.sendEvent("play")
         } else {
             // Only send pause event if not buffering

@@ -24,6 +24,9 @@ extension VideoPlayerView {
         // Store media info for Now Playing
         if let mediaInfo = mediaInfo {
             currentMediaInfo = mediaInfo
+            print("📱 Stored media info during load: \(mediaInfo["title"] ?? "Unknown")")
+        } else {
+            print("⚠️ No media info provided during load")
         }
 
         sendEvent("loading")
@@ -112,21 +115,23 @@ extension VideoPlayerView {
                     self.sendEvent("loaded")
                 }
 
-                // Set now playing info *after* player item is ready
-                if let mediaInfo = mediaInfo {
-                    self.setupNowPlayingInfo(mediaInfo: mediaInfo)
-                }
-
                 // Set up PiP controller if available
+                // Note: We need to get the player layer from the AVPlayerViewController
+                // Check PiP support and send availability
+                // Note: Do NOT create custom AVPictureInPictureController here
+                // as it interferes with automatic PiP from AVPlayerViewController
                 if #available(iOS 14.0, *) {
-                    if AVPictureInPictureController.isPictureInPictureSupported(),
-                       let player = self.player {
-                        // Create a player layer from the player
-                        let playerLayer = AVPlayerLayer(player: player)
-                        if let pipController = try? AVPictureInPictureController(playerLayer: playerLayer) {
-                            self.pipController = pipController
-                        }
+                    if AVPictureInPictureController.isPictureInPictureSupported() {
+                        print("🎬 PiP is supported on this device")
+                        // Send availability immediately
+                        self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": true])
+                    } else {
+                        print("🎬 PiP is NOT supported on this device")
+                        self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": false])
                     }
+                } else {
+                    // iOS version too old for PiP
+                    self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": false])
                 }
 
                 // Auto play if requested
@@ -156,6 +161,41 @@ extension VideoPlayerView {
 
     func handlePlay(result: @escaping FlutterResult) {
         try? AVAudioSession.sharedInstance().setActive(true)
+
+        // Set media item on every play to ensure this player has control
+        if let mediaInfo = currentMediaInfo {
+            let title = mediaInfo["title"] ?? "Unknown"
+            print("📱 Setting Now Playing info for: \(title)")
+            setupNowPlayingInfo(mediaInfo: mediaInfo)
+            
+            // Verify it was set correctly
+            if let nowPlayingTitle = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String {
+                print("✅  Now Playing info confirmed: \(nowPlayingTitle)")
+            }
+        } else {
+            print("⚠️  No media info available when playing")
+        }
+        
+        // Mark this view as the primary (active) view for this controller
+        // This ensures automatic PiP will be enabled on THIS view, not other views
+        if let controllerIdValue = controllerId {
+            SharedPlayerManager.shared.setPrimaryView(viewId, for: controllerIdValue)
+        }
+        
+        // Enable automatic PiP for this controller and disable for all others
+        // Only if automatic PiP was requested in creation params
+        if #available(iOS 14.2, *) {
+            if let controllerIdValue = controllerId {
+                // Only enable if the user requested it in creation params
+                let shouldEnableAutoPiP = canStartPictureInPictureAutomatically
+                if shouldEnableAutoPiP {
+                    SharedPlayerManager.shared.setAutomaticPiPEnabled(for: controllerIdValue, enabled: true)
+                } else {
+                    print("🎬 Automatic PiP not enabled (canStartPictureInPictureAutomatically = false)")
+                }
+            }
+        }
+
         print("Playing with speed: \(desiredPlaybackSpeed)")
         player?.play()
         // Apply the desired playback speed
@@ -169,6 +209,15 @@ extension VideoPlayerView {
     func handlePause(result: @escaping FlutterResult) {
         player?.pause()
         updateNowPlayingPlaybackTime()
+        
+        // Disable automatic PiP when paused
+        // This prevents automatic PiP from triggering for paused videos
+        if #available(iOS 14.2, *) {
+            if let controllerIdValue = controllerId, canStartPictureInPictureAutomatically {
+                SharedPlayerManager.shared.setAutomaticPiPEnabled(for: controllerIdValue, enabled: false)
+            }
+        }
+        
         // Pause event will be sent automatically by timeControlStatus observer
         result(nil)
     }
@@ -512,12 +561,118 @@ extension VideoPlayerView {
 
     func handleEnterPictureInPicture(result: @escaping FlutterResult) {
         if #available(iOS 14.0, *) {
+            // Check if video is loaded and ready
+            guard let player = player, let currentItem = player.currentItem else {
+                print("❌ No video loaded for PiP")
+                result(FlutterError(code: "NO_VIDEO", message: "No video loaded.", details: nil))
+                return
+            }
+            
+            guard currentItem.status == .readyToPlay else {
+                print("❌ Video not ready for PiP")
+                result(FlutterError(code: "NOT_READY", message: "Video is not ready to play.", details: nil))
+                return
+            }
+            
+            // Check if PiP is supported and allowed
+            guard playerViewController.allowsPictureInPicturePlayback else {
+                print("❌ PiP not allowed on player view controller")
+                result(FlutterError(code: "NOT_ALLOWED", message: "Picture-in-Picture is not allowed.", details: nil))
+                return
+            }
+            
+            guard AVPictureInPictureController.isPictureInPictureSupported() else {
+                print("❌ PiP not supported on this device")
+                result(FlutterError(code: "NOT_SUPPORTED", message: "Picture-in-Picture is not supported on this device.", details: nil))
+                return
+            }
+            
+            print("🎬 Starting manual PiP")
+            
+            // Create PiP controller only for manual entry
+            // This is separate from automatic PiP which is handled by AVPlayerViewController
+            if pipController == nil {
+                if let playerLayer = findPlayerLayer() {
+                    pipController = try? AVPictureInPictureController(playerLayer: playerLayer)
+                    pipController?.delegate = self
+                    print("✅ Created PiP controller for manual entry")
+                } else {
+                    print("❌ Could not find player layer")
+                    result(FlutterError(code: "NO_LAYER", message: "Could not find player layer", details: nil))
+                    return
+                }
+            }
+            
+            // Wait a moment for the controller to be ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self = self else {
+                    result(FlutterError(code: "DISPOSED", message: "View was disposed", details: nil))
+                    return
+                }
+                
+                if let pipController = self.pipController {
+                    if pipController.isPictureInPicturePossible {
+                        print("🎬 Starting PiP now")
+                        pipController.startPictureInPicture()
+                        result(true)
+                    } else {
+                        print("❌ PiP not possible at this time")
+                        result(FlutterError(code: "PIP_NOT_POSSIBLE", message: "Picture-in-Picture is not possible at this time. Make sure the video is playing.", details: nil))
+                    }
+                } else {
+                    print("❌ PiP controller not available")
+                    result(FlutterError(code: "NO_CONTROLLER", message: "PiP controller not available", details: nil))
+                }
+            }
+        } else {
+            result(FlutterError(code: "NOT_SUPPORTED", message: "PiP requires iOS 14.0+", details: nil))
+        }
+    }
+    
+    /// Finds the AVPlayerLayer in the view hierarchy
+    private func findPlayerLayer() -> AVPlayerLayer? {
+        // Get the player layer from the AVPlayerViewController's view
+        if let playerView = playerViewController.view {
+            return findPlayerLayerInView(playerView)
+        }
+        return nil
+    }
+    
+    /// Recursively searches for AVPlayerLayer in view hierarchy
+    private func findPlayerLayerInView(_ view: UIView) -> AVPlayerLayer? {
+        // Check if this view's layer is an AVPlayerLayer
+        if let playerLayer = view.layer as? AVPlayerLayer {
+            return playerLayer
+        }
+        
+        // Check sublayers
+        if let sublayers = view.layer.sublayers {
+            for sublayer in sublayers {
+                if let playerLayer = sublayer as? AVPlayerLayer {
+                    return playerLayer
+                }
+            }
+        }
+        
+        // Recursively check subviews
+        for subview in view.subviews {
+            if let playerLayer = findPlayerLayerInView(subview) {
+                return playerLayer
+            }
+        }
+        
+        return nil
+    }
+    
+
+    func handleExitPictureInPicture(result: @escaping FlutterResult) {
+        if #available(iOS 14.0, *) {
             if let pipController = pipController {
-                if pipController.isPictureInPicturePossible {
-                    pipController.startPictureInPicture()
+                if pipController.isPictureInPictureActive {
+                    pipController.stopPictureInPicture()
                     result(true)
                 } else {
-                    result(FlutterError(code: "PIP_NOT_POSSIBLE", message: "Picture-in-Picture is not possible at this time", details: nil))
+                    result(false)
                 }
             } else {
                 result(FlutterError(code: "PIP_NOT_INITIALIZED", message: "Picture-in-Picture controller not initialized", details: nil))

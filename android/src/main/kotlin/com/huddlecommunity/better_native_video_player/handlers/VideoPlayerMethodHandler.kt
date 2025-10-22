@@ -1,5 +1,8 @@
 package com.huddlecommunity.better_native_video_player.handlers
 
+import android.app.Activity
+import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -21,9 +24,11 @@ import kotlinx.coroutines.launch
  */
 @UnstableApi
 class VideoPlayerMethodHandler(
+    private val context: Context,
     private val player: ExoPlayer,
     private val eventHandler: VideoPlayerEventHandler,
-    private val notificationHandler: VideoPlayerNotificationHandler
+    private val notificationHandler: VideoPlayerNotificationHandler,
+    private val updateMediaInfo: ((Map<String, Any>?) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "VideoPlayerMethod"
@@ -36,6 +41,10 @@ class VideoPlayerMethodHandler(
 
     // Callback to handle fullscreen requests from Flutter
     var onFullscreenRequest: ((Boolean) -> Unit)? = null
+
+    // Callback to handle PiP requests from Flutter
+    var onEnterPictureInPictureRequest: (() -> Boolean)? = null
+    var onExitPictureInPictureRequest: (() -> Boolean)? = null
 
     /**
      * Handles incoming method calls from Flutter
@@ -54,6 +63,9 @@ class VideoPlayerMethodHandler(
             "getAvailableQualities" -> handleGetAvailableQualities(result)
             "enterFullScreen" -> handleEnterFullScreen(result)
             "exitFullScreen" -> handleExitFullScreen(result)
+            "isPictureInPictureAvailable" -> handleIsPictureInPictureAvailable(result)
+            "enterPictureInPicture" -> handleEnterPictureInPicture(result)
+            "exitPictureInPicture" -> handleExitPictureInPicture(result)
             "isAirPlayAvailable" -> handleIsAirPlayAvailable(result)
             "showAirPlayPicker" -> handleShowAirPlayPicker(result)
             "dispose" -> handleDispose(result)
@@ -76,6 +88,13 @@ class VideoPlayerMethodHandler(
         val autoPlay = args["autoPlay"] as? Boolean ?: false
         val headers = args["headers"] as? Map<String, String>
         val mediaInfo = args["mediaInfo"] as? Map<String, Any>
+
+        // Store media info in the VideoPlayerView
+        updateMediaInfo?.invoke(mediaInfo)
+        mediaInfo?.let {
+            val title = it["title"] as? String
+            Log.d(TAG, "📱 Stored media info during load: $title")
+        }
 
         Log.d(TAG, "Loading video: $url (autoPlay: $autoPlay)")
 
@@ -129,11 +148,8 @@ class VideoPlayerMethodHandler(
             }
         }
 
-        // Setup media session with metadata
-        notificationHandler.setupMediaSession(mediaInfo)
-        mediaInfo?.let {
-            notificationHandler.updateMediaMetadata(it)
-        }
+        // NOTE: Media session will be set up when playback starts (in VideoPlayerObserver)
+        // This ensures the correct video's metadata is displayed even when switching between videos
 
         // Wait for player to be ready
         val listener = object : androidx.media3.common.Player.Listener {
@@ -141,6 +157,13 @@ class VideoPlayerMethodHandler(
                 if (playbackState == androidx.media3.common.Player.STATE_READY) {
                     eventHandler.sendEvent("loaded")
                     player.removeListener(this)
+                    
+                    // Check and send PiP availability after video is loaded
+                    checkAndSendPipAvailability()
+                    
+                    // Send AirPlay availability (always false on Android)
+                    checkAndSendAirPlayAvailability()
+                    
                     result.success(null)
                 }
             }
@@ -371,5 +394,81 @@ class VideoPlayerMethodHandler(
         Log.d(TAG, "AirPlay picker requested but not supported on Android")
         // Simply return success - AirPlay is not available on Android
         result.success(null)
+    }
+
+    /**
+     * Checks if Picture-in-Picture is available on this device
+     * PiP is available on Android 8.0 (API 26) and above
+     */
+    private fun handleIsPictureInPictureAvailable(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Check if we have an Activity context
+            val activity = context as? Activity
+            if (activity != null) {
+                // Check if the device supports PiP mode
+                val hasPipFeature = activity.packageManager.hasSystemFeature(
+                    android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE
+                )
+                Log.d(TAG, "PiP availability checked - supported: $hasPipFeature")
+                result.success(hasPipFeature)
+            } else {
+                Log.d(TAG, "PiP availability checked - no Activity context")
+                result.success(false)
+            }
+        } else {
+            Log.d(TAG, "PiP availability checked - requires Android 8.0+")
+            result.success(false)
+        }
+    }
+
+    /**
+     * Enters Picture-in-Picture mode
+     * Only works on Android 8.0 (API 26) and above
+     */
+    private fun handleEnterPictureInPicture(result: MethodChannel.Result) {
+        Log.d(TAG, "Flutter requested enter PiP")
+        val success = onEnterPictureInPictureRequest?.invoke() ?: false
+        result.success(success)
+    }
+
+    /**
+     * Exits Picture-in-Picture mode
+     * Only works on Android 8.0 (API 26) and above
+     */
+    private fun handleExitPictureInPicture(result: MethodChannel.Result) {
+        Log.d(TAG, "Flutter requested exit PiP")
+        val success = onExitPictureInPictureRequest?.invoke() ?: false
+        result.success(success)
+    }
+
+    /**
+     * Checks if PiP is available and sends an event to Flutter
+     */
+    private fun checkAndSendPipAvailability() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val activity = context as? Activity
+            if (activity != null) {
+                val hasPipFeature = activity.packageManager.hasSystemFeature(
+                    android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE
+                )
+                Log.d(TAG, "🎬 PiP availability check: $hasPipFeature")
+                eventHandler.sendEvent("pipAvailabilityChanged", mapOf("isAvailable" to hasPipFeature))
+            } else {
+                Log.d(TAG, "🎬 PiP availability check: false (no activity)")
+                eventHandler.sendEvent("pipAvailabilityChanged", mapOf("isAvailable" to false))
+            }
+        } else {
+            Log.d(TAG, "🎬 PiP availability check: false (API < 26)")
+            eventHandler.sendEvent("pipAvailabilityChanged", mapOf("isAvailable" to false))
+        }
+    }
+
+    /**
+     * Sends AirPlay availability (always false on Android)
+     * AirPlay is an Apple-only technology
+     */
+    private fun checkAndSendAirPlayAvailability() {
+        Log.d(TAG, "📡 AirPlay availability check: false (Android)")
+        eventHandler.sendEvent("airPlayAvailabilityChanged", mapOf("isAvailable" to false))
     }
 }

@@ -1,4 +1,5 @@
 import AVFoundation
+import AVKit
 
 // MARK: - Shared Player Manager
 
@@ -9,6 +10,20 @@ class SharedPlayerManager {
     static let shared = SharedPlayerManager()
 
     private var players: [Int: AVPlayer] = [:]
+    
+    /// Track which controller currently has automatic PiP enabled
+    /// Only one controller should have automatic PiP active at a time
+    private var controllerWithAutomaticPiP: Int?
+    
+    /// Track which view ID is the PRIMARY (most recently played) view for each controller
+    /// This ensures we enable PiP on the correct view when multiple views exist (list + detail)
+    private var primaryViewIdForController: [Int: Int64] = [:]
+    
+    /// Store references to ALL active VideoPlayerView instances
+    /// Multiple platform views can exist for the same controller (list + detail screen)
+    /// We need weak references to avoid retain cycles
+    /// Key is a unique identifier (viewId), value is the view
+    private var videoPlayerViews: [String: WeakVideoPlayerViewWrapper] = [:]
 
     private init() {}
 
@@ -27,10 +42,147 @@ class SharedPlayerManager {
     /// Removes a player (called when explicitly disposed)
     func removePlayer(for controllerId: Int) {
         players.removeValue(forKey: controllerId)
+        
+        // Remove all views for this controller
+        videoPlayerViews = videoPlayerViews.filter { $0.value.view?.controllerId != controllerId }
+        
+        // Clear primary view tracking
+        primaryViewIdForController.removeValue(forKey: controllerId)
+        
+        // If this was the controller with automatic PiP, clear it
+        if controllerWithAutomaticPiP == controllerId {
+            controllerWithAutomaticPiP = nil
+        }
     }
 
     /// Clears all players (e.g., on logout)
     func clearAll() {
         players.removeAll()
+        videoPlayerViews.removeAll()
+        primaryViewIdForController.removeAll()
+        controllerWithAutomaticPiP = nil
+    }
+    
+    /// Register a VideoPlayerView instance
+    /// Multiple views can be registered for the same controller (e.g., list + detail screen)
+    func registerVideoPlayerView(_ view: VideoPlayerView, viewId: Int64) {
+        let key = "\(viewId)"
+        videoPlayerViews[key] = WeakVideoPlayerViewWrapper(view: view)
+        print("   → Registered view with ID \(viewId), total views: \(videoPlayerViews.count)")
+    }
+    
+    /// Unregister a VideoPlayerView when it's disposed
+    func unregisterVideoPlayerView(viewId: Int64) {
+        let key = "\(viewId)"
+        videoPlayerViews.removeValue(forKey: key)
+        print("   → Unregistered view with ID \(viewId), remaining views: \(videoPlayerViews.count)")
+    }
+    
+    /// Check if a controller is currently the active one for automatic PiP
+    func isControllerActiveForAutoPiP(_ controllerId: Int) -> Bool {
+        return controllerWithAutomaticPiP == controllerId
+    }
+    
+    /// Set the primary (currently playing) view for a controller
+    /// This should be called whenever play() is called on a view
+    func setPrimaryView(_ viewId: Int64, for controllerId: Int) {
+        primaryViewIdForController[controllerId] = viewId
+        print("   🎯 Set primary view for controller \(controllerId) → ViewId \(viewId)")
+    }
+    
+    /// Enable automatic PiP for a specific controller and disable for all others
+    /// This ensures only one player can enter automatic PiP at a time
+    /// IMPORTANT: Only enables on the MOST RECENT (primary) view for that controller
+    @available(iOS 14.2, *)
+    func setAutomaticPiPEnabled(for controllerId: Int, enabled: Bool) {
+        // Clean up nil/deallocated views first
+        videoPlayerViews = videoPlayerViews.filter { $0.value.view != nil }
+        
+        print("📊 Current state: \(videoPlayerViews.count) active views registered")
+        for (key, wrapper) in videoPlayerViews {
+            if let view = wrapper.view {
+                print("   - ViewId \(key): Controller \(view.controllerId ?? -1), canStartAuto: \(view.canStartPictureInPictureAutomatically), current: \(view.playerViewController.canStartPictureInPictureAutomaticallyFromInline)")
+            }
+        }
+        
+        if enabled {
+            // Disable automatic PiP on all other controllers first
+            if let previousControllerId = controllerWithAutomaticPiP, previousControllerId != controllerId {
+                print("🎬 Disabling automatic PiP for controller \(previousControllerId)")
+                // Disable on ALL platform views for the previous controller
+                var disabledCount = 0
+                for (viewKey, wrapper) in videoPlayerViews {
+                    if let view = wrapper.view, view.controllerId == previousControllerId {
+                        let wasBefore = view.playerViewController.canStartPictureInPictureAutomaticallyFromInline
+                        view.playerViewController.canStartPictureInPictureAutomaticallyFromInline = false
+                        let isAfter = view.playerViewController.canStartPictureInPictureAutomaticallyFromInline
+                        print("   → ViewId \(viewKey): \(wasBefore) → \(isAfter)")
+                        disabledCount += 1
+                    }
+                }
+                print("   → Disabled on \(disabledCount) platform view(s) for controller \(previousControllerId)")
+            }
+            
+            // Find the PRIMARY (most recently played) platform view for this controller
+            print("🎬 Enabling automatic PiP for controller \(controllerId)")
+            
+            // First, disable ALL views for this controller
+            for (viewKey, wrapper) in videoPlayerViews {
+                if let view = wrapper.view, view.controllerId == controllerId {
+                    view.playerViewController.canStartPictureInPictureAutomaticallyFromInline = false
+                }
+            }
+            
+            // Then enable ONLY the primary view (the one that most recently called play)
+            if let primaryViewId = primaryViewIdForController[controllerId] {
+                let key = "\(primaryViewId)"
+                if let wrapper = videoPlayerViews[key], let view = wrapper.view {
+                    if view.canStartPictureInPictureAutomatically {
+                        let wasBefore = view.playerViewController.canStartPictureInPictureAutomaticallyFromInline
+                        view.playerViewController.canStartPictureInPictureAutomaticallyFromInline = true
+                        let isAfter = view.playerViewController.canStartPictureInPictureAutomaticallyFromInline
+                        print("   → ViewId \(view.viewId): \(wasBefore) → \(isAfter) [PRIMARY]")
+                        print("   ✅ Enabled on PRIMARY platform view for controller \(controllerId)")
+                    } else {
+                        print("   ⚠️ Primary view doesn't allow automatic PiP")
+                    }
+                } else {
+                    print("   ⚠️ Primary view (ViewId \(primaryViewId)) not found or disposed")
+                }
+            } else {
+                print("   ⚠️ No primary view set for controller \(controllerId)")
+            }
+            
+            controllerWithAutomaticPiP = controllerId
+        } else {
+            // Disable automatic PiP for ALL platform views of the specified controller
+            print("🎬 Disabling automatic PiP for controller \(controllerId)")
+            var disabledCount = 0
+            for (viewKey, wrapper) in videoPlayerViews {
+                if let view = wrapper.view, view.controllerId == controllerId {
+                    let wasBefore = view.playerViewController.canStartPictureInPictureAutomaticallyFromInline
+                    view.playerViewController.canStartPictureInPictureAutomaticallyFromInline = false
+                    let isAfter = view.playerViewController.canStartPictureInPictureAutomaticallyFromInline
+                    print("   → ViewId \(viewKey): \(wasBefore) → \(isAfter)")
+                    disabledCount += 1
+                }
+            }
+            print("   → Disabled on \(disabledCount) platform view(s) for controller \(controllerId)")
+            
+            if controllerWithAutomaticPiP == controllerId {
+                controllerWithAutomaticPiP = nil
+            }
+        }
+    }
+}
+
+// MARK: - Weak Wrapper
+
+/// Wrapper to hold weak reference to VideoPlayerView
+class WeakVideoPlayerViewWrapper {
+    weak var view: VideoPlayerView?
+    
+    init(view: VideoPlayerView) {
+        self.view = view
     }
 }

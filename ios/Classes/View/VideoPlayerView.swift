@@ -19,6 +19,12 @@ import QuartzCore
     let bitrateCheckInterval: TimeInterval = 5.0 // Check every 5 seconds
     var controllerId: Int?
     var pipController: AVPictureInPictureController?
+    
+    // Store the platform view ID for registration
+    var viewId: Int64 = 0
+    
+    // Store whether automatic PiP was requested in creation params
+    var canStartPictureInPictureAutomatically: Bool = true
 
     // Separate player view controller for fullscreen (prevents removing embedded view)
     var fullscreenPlayerViewController: AVPlayerViewController?
@@ -43,6 +49,7 @@ import QuartzCore
         binaryMessenger messenger: FlutterBinaryMessenger
     ) {
         print("Creating VideoPlayerView with id: \(viewId)")
+        self.viewId = viewId
         channelName = "native_video_player_\(viewId)"
         methodChannel = FlutterMethodChannel(
             name: channelName,
@@ -91,15 +98,54 @@ import QuartzCore
             // PiP configuration
             let allowsPiP = args["allowsPictureInPicture"] as? Bool ?? true
             let canStartAutomatically = args["canStartPictureInPictureAutomatically"] as? Bool ?? true
+            
+            // Store the automatic PiP preference
+            self.canStartPictureInPictureAutomatically = canStartAutomatically
 
             playerViewController.allowsPictureInPicturePlayback = allowsPiP
             if #available(iOS 14.2, *) {
-                playerViewController.canStartPictureInPictureAutomaticallyFromInline = canStartAutomatically
+                // Start with automatic PiP DISABLED
+                // It will be enabled when this specific player starts playing (if allowed)
+                // This prevents conflicts when multiple players exist
+                playerViewController.canStartPictureInPictureAutomaticallyFromInline = false
+                print("✅ PiP configured: allowsPiP=\(allowsPiP), canStartAutomatically=\(canStartAutomatically)")
+            } else {
+                print("⚠️ Automatic PiP requires iOS 14.2+, current device doesn't support it")
+            }
+
+            // Store media info if provided during initialization
+            // This ensures we have the correct media info even for shared players
+            if let mediaInfo = args["mediaInfo"] as? [String: Any] {
+                currentMediaInfo = mediaInfo
+                print("📱 Stored media info during init: \(mediaInfo["title"] ?? "Unknown")")
+            }
+        }
+        
+        // Register this view with the SharedPlayerManager
+        if let controllerIdValue = controllerId {
+            SharedPlayerManager.shared.registerVideoPlayerView(self, viewId: viewId)
+            print("✅ Registered VideoPlayerView for controller \(controllerIdValue), viewId: \(viewId)")
+            
+            // If this controller is currently the one with automatic PiP enabled,
+            // enable automatic PiP on this NEW view controller immediately
+            if #available(iOS 14.2, *) {
+                if SharedPlayerManager.shared.isControllerActiveForAutoPiP(controllerIdValue) {
+                    print("🎬 This controller is currently active for auto PiP")
+                    if canStartPictureInPictureAutomatically {
+                        playerViewController.canStartPictureInPictureAutomaticallyFromInline = true
+                        print("   → Enabled automatic PiP on new platform view (viewId: \(viewId))")
+                    }
+                }
             }
         }
 
-        // Background audio setup
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
+        // Background audio setup - required for automatic PiP
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
+            print("✅ AVAudioSession configured for playback")
+        } catch {
+            print("❌ Failed to configure AVAudioSession: \(error.localizedDescription)")
+        }
         try? AVAudioSession.sharedInstance().setActive(true)
 
         print("Setting up method channel: \(channelName)")
@@ -166,6 +212,8 @@ import QuartzCore
             handleIsPictureInPictureAvailable(result: result)
         case "enterPictureInPicture":
             handleEnterPictureInPicture(result: result)
+        case "exitPictureInPicture":
+            handleExitPictureInPicture(result: result)
         case "setShowNativeControls":
             handleSetShowNativeControls(call: call, result: result)
         case "isAirPlayAvailable":
@@ -243,7 +291,10 @@ import QuartzCore
     }
 
     deinit {
-        print("VideoPlayerView deinit for channel: \(channelName)")
+        print("VideoPlayerView deinit for channel: \(channelName), viewId: \(viewId)")
+        
+        // Unregister this view from SharedPlayerManager
+        SharedPlayerManager.shared.unregisterVideoPlayerView(viewId: viewId)
 
         // Remove periodic time observer
         if let timeObserver = timeObserver {

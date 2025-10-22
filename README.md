@@ -56,11 +56,29 @@ Add the following to your `Info.plist`:
     <key>NSAllowsArbitraryLoads</key>
     <true/>
 </dict>
+
+<!-- For background audio/video playback and Picture-in-Picture -->
+<key>UIBackgroundModes</key>
+<array>
+    <string>audio</string>
+    <string>picture-in-picture</string>
+</array>
 ```
 
-For Picture-in-Picture support, enable Background Modes in Xcode:
-- Target → Signing & Capabilities → Background Modes
+**For Picture-in-Picture support**, you can either:
+
+**Option 1: Manual Info.plist configuration** (as shown above)
+- Add both `audio` and `picture-in-picture` to `UIBackgroundModes`
+
+**Option 2: Xcode Capabilities interface**
+- Target → Signing & Capabilities → "+ Capability" → Background Modes
 - Check "Audio, AirPlay, and Picture in Picture"
+- This will automatically add both `audio` and `picture-in-picture` to your Info.plist
+
+**Note:** Both `audio` and `picture-in-picture` capabilities are required for:
+- Automatic Picture-in-Picture when app goes to background (iOS 14.2+)
+- Background audio playback
+- AirPlay functionality
 
 ### Android Setup
 
@@ -707,9 +725,17 @@ void dispose() {
 - Check that the video format is supported by AVPlayer (HLS, MP4, MOV)
 
 **PiP not working:**
-- Enable Background Modes in Xcode: Target → Signing & Capabilities → Background Modes
-- Check "Audio, AirPlay, and Picture in Picture"
+- **Required**: Add `picture-in-picture` to `UIBackgroundModes` in Info.plist (in addition to `audio`)
+  ```xml
+  <key>UIBackgroundModes</key>
+  <array>
+      <string>audio</string>
+      <string>picture-in-picture</string>
+  </array>
+  ```
+- OR enable via Xcode: Target → Signing & Capabilities → Background Modes → Check "Audio, AirPlay, and Picture in Picture"
 - Ensure iOS version is 14.0+ (check with `await controller.isPictureInPictureAvailable()`)
+- For **automatic PiP** when app goes to background, iOS 14.2+ is required and `canStartPictureInPictureAutomatically` must be `true` (default)
 - PiP requires video to be playing before entering PiP mode
 - Some simulators don't support PiP; test on a physical device
 
