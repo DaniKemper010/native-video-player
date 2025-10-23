@@ -526,10 +526,6 @@ class NativeVideoPlayerController {
       // Use the most recent remaining view
       final newPrimaryViewId = _platformViewIds.last;
       _updateMethodChannel(newPrimaryViewId);
-    } else if (_platformViewIds.isEmpty) {
-      // No views left, clear everything
-      _primaryPlatformViewId = null;
-      _methodChannel = null;
     }
   }
 
@@ -790,11 +786,94 @@ class NativeVideoPlayerController {
     await _methodChannel!.showAirPlayPicker();
   }
 
-  /// Disposes of resources and cleans up platform channels
+  /// Releases Flutter-side resources while keeping the native player alive
   ///
-  /// Should be called when the video player is no longer needed.
-  /// Properly disposes both Flutter and native platform resources.
+  /// Use this when navigating away from a screen but want to keep the video
+  /// loaded and resume playback when returning. This pauses the video and
+  /// cleans up Flutter resources (subscriptions, listeners, contexts) but
+  /// does NOT dispose the native player.
+  ///
+  /// Perfect for:
+  /// - Navigating between list and detail screens with the same video
+  /// - Temporarily hiding a video player while keeping it loaded
+  /// - Memory optimization without losing playback position
+  ///
+  /// **Usage:**
+  /// ```dart
+  /// @override
+  /// void dispose() {
+  ///   // Release Flutter resources but keep native player alive
+  ///   _controller.releaseResources();
+  ///   super.dispose();
+  /// }
+  /// ```
+  Future<void> releaseResources() async {
+    // Pause playback
+    await pause();
+
+    // Exit fullscreen if active
+    if (_state.isFullScreen) {
+      await exitFullScreen();
+    }
+
+    // Cancel all event channel subscriptions
+    for (final StreamSubscription<dynamic> subscription
+        in _eventSubscriptions.values) {
+      await subscription.cancel();
+    }
+    _eventSubscriptions.clear();
+
+    // Cancel PiP event subscription (Android only)
+    await _pipEventSubscription?.cancel();
+    _pipEventSubscription = null;
+
+    // Clear all event handlers
+    _activityEventHandlers.clear();
+    _controlEventHandlers.clear();
+    _airPlayAvailabilityHandlers.clear();
+    _airPlayConnectionHandlers.clear();
+
+    // Clear platform view references
+    _platformViewIds.clear();
+    _platformViewContexts.clear();
+    _primaryPlatformViewId = null;
+
+    // Clear overlay and fullscreen references
+    _overlayBuilder = null;
+    _dartFullscreenCloseCallback = null;
+
+    // Clear method channel reference (but don't dispose native player)
+    _methodChannel = null;
+    _initializeCompleter = null;
+
+    // Note: We do NOT clear _state and _url so we can resume playback
+    // Note: We do NOT call _methodChannel.dispose() to keep native player alive
+  }
+
+  /// Fully disposes of all resources including the native player
+  ///
+  /// Should be called when the video player is no longer needed and will not
+  /// be reused. This completely destroys both Flutter and native resources.
+  ///
+  /// For temporary cleanup while keeping the player alive, use [releaseResources] instead.
+  ///
+  /// **Usage:**
+  /// ```dart
+  /// @override
+  /// void dispose() {
+  ///   // Fully dispose when done with the controller
+  ///   _controller.dispose();
+  ///   super.dispose();
+  /// }
+  /// ```
   Future<void> dispose() async {
+    // Pause playback first to avoid crashes during disposal
+    if (_state.activityState.isPlaying) {
+      await pause();
+      // Give the native side a moment to process the pause
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+
     // Exit fullscreen if active
     if (_state.isFullScreen) {
       await exitFullScreen();

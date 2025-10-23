@@ -32,14 +32,20 @@ class VideoListScreenWithPlayers extends StatelessWidget {
       body: ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 16),
         itemCount: videos.length,
+        addAutomaticKeepAlives: false,
         itemBuilder: (context, index) {
           final video = videos[index];
           // Use custom overlay for the first video to demonstrate inline custom controls
           final useCustomOverlay = index == 0;
 
           return VideoPlayerCard(
+            key: ValueKey(video.id),
             video: video,
             useCustomOverlay: useCustomOverlay,
+            shouldShowVideo:
+                index !=
+                videos.length -
+                    1, // Show video only for the last item to save resources
             onTap: (controller) {
               Navigator.push(
                 context,

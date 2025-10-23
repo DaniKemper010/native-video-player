@@ -484,15 +484,25 @@ extension VideoPlayerView {
     }
 
     func handleDispose(result: @escaping FlutterResult) {
+        print("🗑️ [VideoPlayerMethodHandler] handleDispose called for controllerId: \(String(describing: controllerId))")
+
+        // Pause the player first
         player?.pause()
+        print("⏸️ [VideoPlayerMethodHandler] Player paused")
 
         // Remove from shared manager if this is a shared player
         if let controllerId = controllerId {
+            print("🔄 [VideoPlayerMethodHandler] Calling SharedPlayerManager.removePlayer for controllerId: \(controllerId)")
             SharedPlayerManager.shared.removePlayer(for: controllerId)
-            print("Removed shared player for controller ID: \(controllerId)")
+            print("✅ [VideoPlayerMethodHandler] SharedPlayerManager.removePlayer completed for controllerId: \(controllerId)")
+        } else {
+            print("⚠️ [VideoPlayerMethodHandler] No controllerId - cannot remove from SharedPlayerManager")
         }
 
+        // Clear local player reference
         player = nil
+        print("🧹 [VideoPlayerMethodHandler] Local player reference cleared")
+
         sendEvent("stopped")
         result(nil)
     }

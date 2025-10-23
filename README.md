@@ -196,6 +196,149 @@ await _controller.exitFullScreen();
 await _controller.toggleFullScreen();
 ```
 
+#### Lifecycle Management
+
+The plugin provides two methods for managing player lifecycle:
+
+##### dispose() - Complete Cleanup
+
+Fully disposes of all resources including the native player. Use this when the video player is no longer needed and will not be reused.
+
+```dart
+@override
+void dispose() {
+  // Remove all listeners
+  _controller.removeActivityListener(_handleActivityEvent);
+  _controller.removeControlListener(_handleControlEvent);
+  
+  // Fully dispose the controller
+  _controller.dispose();
+  super.dispose();
+}
+```
+
+**What dispose() does:**
+- Pauses playback and exits fullscreen
+- Cancels all event channel subscriptions
+- Clears all event handlers and listeners
+- Releases Flutter resources (platform view contexts, overlay builders)
+- **Destroys the native player** (calls platform's dispose method)
+- Clears player state and URL
+- Removes player from shared player manager
+
+##### releaseResources() - Temporary Cleanup
+
+Releases Flutter resources but keeps the native player alive. Useful when you need to temporarily clean up Flutter-side resources while keeping the native player running (e.g., when navigating away from a screen but want to keep the player alive for later).
+
+```dart
+@override
+void dispose() {
+  // Release Flutter resources but keep native player alive
+  _controller.releaseResources();
+  super.dispose();
+}
+```
+
+**What releaseResources() does:**
+- Pauses playback and exits fullscreen
+- Cancels all event channel subscriptions
+- Clears all event handlers and listeners
+- Releases Flutter resources (platform view contexts, overlay builders)
+- **Keeps the native player alive** for potential reuse
+
+**When to use each method:**
+
+| Scenario | Method | Reason |
+|----------|--------|--------|
+| Leaving the app or closing video permanently | `dispose()` | Completely frees all resources including native player |
+| Navigating between screens with same controller ID | `releaseResources()` | Keeps native player alive for shared player scenarios |
+| Temporarily hiding video player | `releaseResources()` | Player can be quickly resumed without reloading video |
+| App shutdown or logout | `dispose()` | Ensures complete cleanup |
+
+**Example: Shared player across screens**
+
+```dart
+// List screen with thumbnail/preview
+class VideoListScreen extends StatefulWidget {
+  @override
+  State<VideoListScreen> createState() => _VideoListScreenState();
+}
+
+class _VideoListScreenState extends State<VideoListScreen> {
+  late NativeVideoPlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    // Use a stable controller ID for sharing
+    _controller = NativeVideoPlayerController(id: 100, autoPlay: false);
+    _controller.initialize();
+    _controller.load(url: 'https://example.com/video.m3u8');
+  }
+
+  @override
+  void dispose() {
+    // Release Flutter resources but keep native player for detail screen
+    _controller.releaseResources();
+    super.dispose();
+  }
+
+  Widget build(BuildContext context) {
+    return ListTile(
+      onTap: () {
+        // Navigate to detail screen with same controller ID
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => VideoDetailScreen(controllerId: 100),
+          ),
+        );
+      },
+      // ... list item content
+    );
+  }
+}
+
+// Detail screen reuses the same controller
+class VideoDetailScreen extends StatefulWidget {
+  final int controllerId;
+  
+  const VideoDetailScreen({required this.controllerId, super.key});
+
+  @override
+  State<VideoDetailScreen> createState() => _VideoDetailScreenState();
+}
+
+class _VideoDetailScreenState extends State<VideoDetailScreen> {
+  late NativeVideoPlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    // Reuse the same controller ID - native player is still alive!
+    _controller = NativeVideoPlayerController(
+      id: widget.controllerId,
+      autoPlay: true,
+    );
+    _controller.initialize();
+  }
+
+  @override
+  void dispose() {
+    // Fully dispose when leaving detail screen permanently
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: NativeVideoPlayer(controller: _controller),
+    );
+  }
+}
+```
+
 #### Quality Selection (HLS)
 
 ```dart
@@ -618,7 +761,8 @@ NativeVideoPlayer(
 - `void removeActivityListener(void Function(PlayerActivityEvent) listener)` - Remove activity event listener
 - `void addControlListener(void Function(PlayerControlEvent) listener)` - Add control event listener
 - `void removeControlListener(void Function(PlayerControlEvent) listener)` - Remove control event listener
-- `Future<void> dispose()` - Clean up resources
+- `Future<void> releaseResources()` - Release Flutter resources but keep native player alive (for temporary cleanup)
+- `Future<void> dispose()` - Fully dispose all resources including native player (for complete cleanup)
 
 #### Properties
 
@@ -724,15 +868,24 @@ final detailController = NativeVideoPlayerController(
 
 **Memory leaks:**
 ```dart
-// Always remove listeners and dispose controllers
+// Always remove listeners and dispose controllers properly
 @override
 void dispose() {
+  // Remove all listeners first
   _controller.removeActivityListener(_handleActivityEvent);
   _controller.removeControlListener(_handleControlEvent);
+  _controller.removeAirPlayAvailabilityListener(_handleAirPlayAvailability);
+  _controller.removeAirPlayConnectionListener(_handleAirPlayConnection);
+  
+  // Choose the appropriate disposal method:
+  // - Use dispose() for complete cleanup (recommended in most cases)
+  // - Use releaseResources() only for shared player scenarios
   _controller.dispose();
   super.dispose();
 }
 ```
+
+**Note:** See the [Lifecycle Management](#lifecycle-management) section for details on when to use `dispose()` vs `releaseResources()`.
 
 ### iOS
 

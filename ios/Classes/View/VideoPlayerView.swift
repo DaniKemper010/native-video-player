@@ -273,10 +273,17 @@ import QuartzCore
         if isSharedPlayer {
             // For shared players, only send current playback state and position
             if let player = player, let currentItem = player.currentItem {
-                // Send current position
-                let duration = Int(CMTimeGetSeconds(currentItem.duration) * 1000)
-                let position = Int(CMTimeGetSeconds(player.currentTime()) * 1000)
-                sendEvent("timeUpdated", data: ["position": position, "duration": duration])
+                let currentTimeSeconds = CMTimeGetSeconds(player.currentTime())
+                let durationSeconds = CMTimeGetSeconds(currentItem.duration)
+
+                // Check for NaN or invalid times
+                if currentTimeSeconds.isNaN || durationSeconds.isNaN {
+                    print("[\(channelName)] Skipping timeUpdated event — invalid currentTime or duration")
+                } else {
+                    let duration = Int(durationSeconds * 1000)
+                    let position = Int(currentTimeSeconds * 1000)
+                    sendEvent("timeUpdated", data: ["position": position, "duration": duration])
+                }
 
                 // Send current playback state
                 switch player.timeControlStatus {
@@ -293,6 +300,7 @@ import QuartzCore
                     break
                 }
             }
+
         } else {
             // For new players, send isInitialized event
             print("[\(channelName)] Sending isInitialized event to new listener")

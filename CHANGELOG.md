@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2025-10-23
+
+### Improved
+- **Enhanced Player Disposal and Cleanup**: Improved SharedPlayerManager on both iOS and Android platforms
+  - Added `stopAllViewsForController()` method to properly stop playback and clear player from all views when disposing
+  - Enhanced iOS disposal to pause player and clear current item before removing
+  - Enhanced Android disposal to stop playback and clear active views
+  - Improved logging for better debugging of player lifecycle
+  - Better cleanup of view references when controller is disposed
+
+### Changed
+- Code formatting improvements across the codebase to comply with Dart style guidelines
+- Improved readability with better line formatting in `NativeVideoPlayerController`
+
 ## [0.2.6] - 2025-10-23
 
 ### Fixed

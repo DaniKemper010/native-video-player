@@ -121,9 +121,24 @@ object SharedPlayerManager {
     }
 
     /**
+     * Stops all views for a given controller
+     */
+    fun stopAllViewsForController(controllerId: Int) {
+        val player = players[controllerId] ?: return
+
+        // Stop playback
+        player.stop()
+
+        Log.d(TAG, "Stopped all views for controller $controllerId")
+    }
+
+    /**
      * Removes a player (called when explicitly disposed)
      */
     fun removePlayer(context: Context, controllerId: Int) {
+        // First stop all views using this player
+        stopAllViewsForController(controllerId)
+
         // Release notification handler
         notificationHandlers[controllerId]?.release()
         notificationHandlers.remove(controllerId)
@@ -134,6 +149,11 @@ object SharedPlayerManager {
 
         // Remove PiP settings
         pipSettings.remove(controllerId)
+
+        // Clear active views for this controller
+        activeViews.remove(controllerId)
+
+        Log.d(TAG, "Removed player for controller $controllerId")
 
         // If no more players, stop the service
         if (players.isEmpty()) {

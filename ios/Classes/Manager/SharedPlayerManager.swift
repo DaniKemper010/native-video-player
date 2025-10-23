@@ -66,12 +66,52 @@ class SharedPlayerManager {
         return pipSettings[controllerId]
     }
 
+    /// Stops and clears player from all views using this controller
+    func stopAllViewsForController(_ controllerId: Int) {
+        print("🛑 [SharedPlayerManager] stopAllViewsForController called for controllerId: \(controllerId)")
+
+        guard let player = players[controllerId] else {
+            print("⚠️ [SharedPlayerManager] No player found for controllerId: \(controllerId)")
+            return
+        }
+
+        print("⏸️ [SharedPlayerManager] Pausing player for controllerId: \(controllerId)")
+        // Pause and clear the player
+        player.pause()
+        print("🧹 [SharedPlayerManager] Clearing current item for controllerId: \(controllerId)")
+        player.replaceCurrentItem(with: nil)
+
+        // Clear player reference from all views using this controller
+        var clearedViewCount = 0
+        for (viewId, weakView) in videoPlayerViews {
+            if let view = weakView.view, view.controllerId == controllerId {
+                print("🧹 [SharedPlayerManager] Clearing player from view \(viewId) for controllerId: \(controllerId)")
+                view.player = nil
+                clearedViewCount += 1
+            }
+        }
+
+        print("✅ [SharedPlayerManager] Stopped all views (\(clearedViewCount) views) for controller ID: \(controllerId)")
+    }
+
     /// Removes a player (called when explicitly disposed)
     func removePlayer(for controllerId: Int) {
+        print("🗑️ [SharedPlayerManager] removePlayer called for controllerId: \(controllerId)")
+        print("📊 [SharedPlayerManager] Current players count: \(players.count), players: \(players.keys.sorted())")
+
+        // First stop all views using this player
+        stopAllViewsForController(controllerId)
+
+        // Remove player from manager
+        print("🧹 [SharedPlayerManager] Removing player from players dict for controllerId: \(controllerId)")
         players.removeValue(forKey: controllerId)
+        print("✅ [SharedPlayerManager] Player removed. New players count: \(players.count), players: \(players.keys.sorted())")
 
         // Remove all views for this controller
+        let viewCountBefore = videoPlayerViews.count
         videoPlayerViews = videoPlayerViews.filter { $0.value.view?.controllerId != controllerId }
+        let viewCountAfter = videoPlayerViews.count
+        print("🧹 [SharedPlayerManager] Removed \(viewCountBefore - viewCountAfter) views. New view count: \(viewCountAfter)")
 
         // Clear primary view tracking
         primaryViewIdForController.removeValue(forKey: controllerId)
@@ -83,6 +123,8 @@ class SharedPlayerManager {
         if controllerWithAutomaticPiP == controllerId {
             controllerWithAutomaticPiP = nil
         }
+
+        print("✅ [SharedPlayerManager] Fully removed player for controller ID: \(controllerId)")
     }
 
     /// Clears all players (e.g., on logout)

@@ -7,8 +7,9 @@ import '../models/video_item.dart';
 import 'custom_video_overlay.dart';
 
 class VideoPlayerCard extends StatefulWidget {
+  final bool shouldShowVideo;
   final VideoItem video;
-  final Function(NativeVideoPlayerController) onTap;
+  final Function(NativeVideoPlayerController?) onTap;
   final bool useCustomOverlay;
 
   const VideoPlayerCard({
@@ -16,23 +17,20 @@ class VideoPlayerCard extends StatefulWidget {
     required this.video,
     required this.onTap,
     this.useCustomOverlay = false,
+    this.shouldShowVideo = true,
   });
 
   @override
   State<VideoPlayerCard> createState() => _VideoPlayerCardState();
 }
 
-class _VideoPlayerCardState extends State<VideoPlayerCard>
-    with AutomaticKeepAliveClientMixin {
+class _VideoPlayerCardState extends State<VideoPlayerCard> {
   NativeVideoPlayerController? _controller;
   String _status = 'Ready';
   PlayerActivityState state = PlayerActivityState.idle;
   Duration _currentPosition = Duration.zero;
   Duration _duration = Duration.zero;
   bool _shouldCreatePlayer = false;
-
-  @override
-  bool get wantKeepAlive => true;
 
   Future<void> _ensureControllerCreated() async {
     if (_controller == null) {
@@ -84,7 +82,9 @@ class _VideoPlayerCardState extends State<VideoPlayerCard>
   @override
   void initState() {
     super.initState();
-    _init();
+    if (widget.shouldShowVideo) {
+      _init();
+    }
   }
 
   void _init() {
@@ -176,23 +176,22 @@ class _VideoPlayerCardState extends State<VideoPlayerCard>
     if (_controller != null) {
       _controller!.removeActivityListener(_handleActivityEvent);
       _controller!.removeControlListener(_handleControlEvent);
-      _controller!.dispose();
+      // Fire and forget - dispose is async but we can't await in dispose()
+      unawaited(_controller!.dispose());
     }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
-
     return Card(
       elevation: 4,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: () {
-          if (_controller != null) {
-            widget.onTap(_controller!);
+          if (!widget.shouldShowVideo || _controller != null) {
+            widget.onTap(_controller);
           } else {
             _init();
           }
@@ -312,7 +311,23 @@ class _VideoPlayerCardState extends State<VideoPlayerCard>
                       Icon(Icons.chevron_right, color: Colors.grey[400]),
                       IconButton(
                         onPressed: () {
-                          _controller?.dispose();
+                          if (_controller != null) {
+                            unawaited(_controller!.releaseResources());
+                          }
+                          _controller = null;
+                          setState(() {
+                            _shouldCreatePlayer = false;
+                            _status = 'Released resources';
+                            state = PlayerActivityState.idle;
+                          });
+                        },
+                        icon: const Icon(Icons.refresh),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          if (_controller != null) {
+                            unawaited(_controller!.dispose());
+                          }
                           _controller = null;
                           setState(() {
                             _shouldCreatePlayer = false;
@@ -320,7 +335,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard>
                             state = PlayerActivityState.idle;
                           });
                         },
-                        icon: Icon(Icons.cancel),
+                        icon: const Icon(Icons.cancel),
                       ),
                     ],
                   ),
