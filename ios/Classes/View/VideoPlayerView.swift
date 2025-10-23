@@ -95,20 +95,44 @@ import QuartzCore
 
         // Extract configuration from Flutter args
         if let args = args as? [String: Any] {
-            // PiP configuration
-            let allowsPiP = args["allowsPictureInPicture"] as? Bool ?? true
-            let canStartAutomatically = args["canStartPictureInPictureAutomatically"] as? Bool ?? true
-            
-            // Store the automatic PiP preference
-            self.canStartPictureInPictureAutomatically = canStartAutomatically
+            // PiP configuration from args
+            let argsAllowsPiP = args["allowsPictureInPicture"] as? Bool ?? true
+            let argsCanStartAutomatically = args["canStartPictureInPictureAutomatically"] as? Bool ?? true
+            let argsShowNativeControls = args["showNativeControls"] as? Bool ?? true
 
-            playerViewController.allowsPictureInPicturePlayback = allowsPiP
+            // For shared players, try to get PiP settings from SharedPlayerManager
+            // This ensures PiP settings persist across all views using the same controller
+            if let controllerIdValue = controllerId {
+                if let sharedSettings = SharedPlayerManager.shared.getPipSettings(for: controllerIdValue) {
+                    // Use existing shared settings
+                    self.canStartPictureInPictureAutomatically = sharedSettings.canStartPictureInPictureAutomatically
+                    playerViewController.allowsPictureInPicturePlayback = sharedSettings.allowsPictureInPicture
+                    print("✅ Using shared PiP settings for controller \(controllerIdValue) - allows: \(sharedSettings.allowsPictureInPicture), autoStart: \(sharedSettings.canStartPictureInPictureAutomatically)")
+                } else {
+                    // First view for this controller - store the settings
+                    self.canStartPictureInPictureAutomatically = argsCanStartAutomatically
+                    playerViewController.allowsPictureInPicturePlayback = argsAllowsPiP
+                    SharedPlayerManager.shared.setPipSettings(
+                        for: controllerIdValue,
+                        allowsPictureInPicture: argsAllowsPiP,
+                        canStartPictureInPictureAutomatically: argsCanStartAutomatically,
+                        showNativeControls: argsShowNativeControls
+                    )
+                    print("✅ Stored new PiP settings for controller \(controllerIdValue) - allows: \(argsAllowsPiP), autoStart: \(argsCanStartAutomatically)")
+                }
+            } else {
+                // Non-shared player - use settings from args
+                self.canStartPictureInPictureAutomatically = argsCanStartAutomatically
+                playerViewController.allowsPictureInPicturePlayback = argsAllowsPiP
+                print("✅ PiP settings for non-shared player - allows: \(argsAllowsPiP), autoStart: \(argsCanStartAutomatically)")
+            }
+
             if #available(iOS 14.2, *) {
                 // Start with automatic PiP DISABLED
                 // It will be enabled when this specific player starts playing (if allowed)
                 // This prevents conflicts when multiple players exist
                 playerViewController.canStartPictureInPictureAutomaticallyFromInline = false
-                print("✅ PiP configured: allowsPiP=\(allowsPiP), canStartAutomatically=\(canStartAutomatically)")
+                print("✅ PiP configured, automatic PiP will be enabled on play if allowed")
             } else {
                 print("⚠️ Automatic PiP requires iOS 14.2+, current device doesn't support it")
             }
@@ -125,15 +149,18 @@ import QuartzCore
         if let controllerIdValue = controllerId {
             SharedPlayerManager.shared.registerVideoPlayerView(self, viewId: viewId)
             print("✅ Registered VideoPlayerView for controller \(controllerIdValue), viewId: \(viewId)")
-            
+
             // If this controller is currently the one with automatic PiP enabled,
-            // enable automatic PiP on this NEW view controller immediately
+            // this new view should become the primary view and get automatic PiP
             if #available(iOS 14.2, *) {
                 if SharedPlayerManager.shared.isControllerActiveForAutoPiP(controllerIdValue) {
                     print("🎬 This controller is currently active for auto PiP")
                     if canStartPictureInPictureAutomatically {
-                        playerViewController.canStartPictureInPictureAutomaticallyFromInline = true
-                        print("   → Enabled automatic PiP on new platform view (viewId: \(viewId))")
+                        // Set this new view as the primary view
+                        SharedPlayerManager.shared.setPrimaryView(viewId, for: controllerIdValue)
+                        // Re-apply automatic PiP settings to enable it on this new view
+                        SharedPlayerManager.shared.setAutomaticPiPEnabled(for: controllerIdValue, enabled: true)
+                        print("   → Set new view as primary and enabled automatic PiP (viewId: \(viewId))")
                     }
                 }
             }

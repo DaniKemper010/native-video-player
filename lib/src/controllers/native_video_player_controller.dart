@@ -540,7 +540,7 @@ class NativeVideoPlayerController {
   /// If multiple platform views are using this controller, they will all sync to the same video.
   ///
   /// **Parameters:**
-  /// - url: Video URL to play (supports HLS .m3u8 and direct video URLs)
+  /// - url: Video URL to play (supports HLS and direct video URLs)
   /// - headers: Optional HTTP headers to include with the video request (e.g., {"Referer": "domain"})
   ///
   /// **Returns:**

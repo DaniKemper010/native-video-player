@@ -43,10 +43,14 @@ extension VideoPlayerView {
                 default: break
                 }
             case "playbackBufferEmpty":
-                // Send buffering event when buffer is empty
-                // This is important for seeking while paused
-                if item.isPlaybackBufferEmpty {
-                    sendEvent("buffering")
+                // Only send buffering event when buffer is empty AND playback has stalled
+                // This prevents false buffering events when the player has enough buffer to continue
+                if item.isPlaybackBufferEmpty, let player = player {
+                    // Only send buffering if the player is waiting to play (actually stalled)
+                    // or if we're seeking (reasonForWaitingToPlay is not nil)
+                    if player.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                        sendEvent("buffering")
+                    }
                 }
             case "playbackLikelyToKeepUp":
                 // Send loading event when buffer is ready, then restore playback state
@@ -82,11 +86,60 @@ extension VideoPlayerView {
                         print("📱 [Observer] Player started playing, updating Now Playing info for: \(mediaInfo["title"] ?? "Unknown")")
                         setupNowPlayingInfo(mediaInfo: mediaInfo)
                     }
+
+                    // Enable automatic PiP when playback starts (even from native controls)
+                    // This ensures auto PiP works whether the user taps Flutter controls or native controls
+                    if #available(iOS 14.2, *) {
+                        if let controllerIdValue = controllerId {
+                            // Check if there's already a primary view for this controller
+                            let hasPrimaryView = SharedPlayerManager.shared.getPrimaryViewId(for: controllerIdValue) != nil
+
+                            if !hasPrimaryView {
+                                // No primary view set yet - this means the user started playback via native controls
+                                // Set THIS view as primary
+                                SharedPlayerManager.shared.setPrimaryView(viewId, for: controllerIdValue)
+                                print("📱 [Observer] No primary view set, making this view (ViewId \(viewId)) primary for controller \(controllerIdValue)")
+                            }
+
+                            // Check if THIS view is the primary view for this controller
+                            if SharedPlayerManager.shared.isPrimaryView(viewId, for: controllerIdValue) {
+                                // For shared players, check the shared settings instead of instance variable
+                                // This ensures the second view uses the same PiP settings as the first view
+                                let shouldEnableAutoPiP: Bool
+                                if let sharedSettings = SharedPlayerManager.shared.getPipSettings(for: controllerIdValue) {
+                                    shouldEnableAutoPiP = sharedSettings.canStartPictureInPictureAutomatically
+                                    print("📱 [Observer] Using shared PiP settings for controller \(controllerIdValue): \(shouldEnableAutoPiP)")
+                                } else {
+                                    shouldEnableAutoPiP = canStartPictureInPictureAutomatically
+                                    print("📱 [Observer] Using instance PiP settings: \(shouldEnableAutoPiP)")
+                                }
+
+                                if shouldEnableAutoPiP {
+                                    print("📱 [Observer] Enabling automatic PiP for controller \(controllerIdValue) (triggered by native controls)")
+                                    SharedPlayerManager.shared.setAutomaticPiPEnabled(for: controllerIdValue, enabled: true)
+                                } else {
+                                    print("📱 [Observer] Automatic PiP not enabled (canStartPictureInPictureAutomatically = false)")
+                                }
+                            } else {
+                                print("📱 [Observer] Skipping auto PiP enable - this view (ViewId \(viewId)) is not primary for controller \(controllerIdValue)")
+                            }
+                        }
+                    }
+
                     sendEvent("play")
                 case .paused:
                     // Only send pause if not waiting to play (buffering)
                     // This prevents sending pause when seeking to unbuffered position
                     if player.reasonForWaitingToPlay == nil {
+                        // Disable automatic PiP when paused (even from native controls)
+                        // This prevents automatic PiP from triggering for paused videos
+                        if #available(iOS 14.2, *) {
+                            if let controllerIdValue = controllerId, canStartPictureInPictureAutomatically {
+                                print("📱 [Observer] Disabling automatic PiP for controller \(controllerIdValue) (triggered by native controls)")
+                                SharedPlayerManager.shared.setAutomaticPiPEnabled(for: controllerIdValue, enabled: false)
+                            }
+                        }
+
                         sendEvent("pause")
                     }
                 case .waitingToPlayAtSpecifiedRate:

@@ -11,13 +11,19 @@ class VideoPlayerCard extends StatefulWidget {
   final Function(NativeVideoPlayerController) onTap;
   final bool useCustomOverlay;
 
-  const VideoPlayerCard({super.key, required this.video, required this.onTap, this.useCustomOverlay = false});
+  const VideoPlayerCard({
+    super.key,
+    required this.video,
+    required this.onTap,
+    this.useCustomOverlay = false,
+  });
 
   @override
   State<VideoPlayerCard> createState() => _VideoPlayerCardState();
 }
 
-class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAliveClientMixin {
+class _VideoPlayerCardState extends State<VideoPlayerCard>
+    with AutomaticKeepAliveClientMixin {
   NativeVideoPlayerController? _controller;
   String _status = 'Ready';
   PlayerActivityState state = PlayerActivityState.idle;
@@ -34,7 +40,10 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
         id: widget.video.id,
         autoPlay: false,
         lockToLandscape: false,
-        mediaInfo: NativeVideoPlayerMediaInfo(title: widget.video.title, subtitle: widget.video.description),
+        mediaInfo: NativeVideoPlayerMediaInfo(
+          title: widget.video.title,
+          subtitle: widget.video.description,
+        ),
       );
 
       _controller!.addActivityListener(_handleActivityEvent);
@@ -74,6 +83,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
 
   @override
   void initState() {
+    super.initState();
     if (_controller == null) {
       setState(() {
         _shouldCreatePlayer = true;
@@ -97,7 +107,9 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
           final duration = event.data!['duration'] as int?;
           if (duration != null) {
             _duration = Duration(milliseconds: duration);
-            debugPrint('VideoPlayerCard ${widget.video.id}: Duration loaded: ${_duration.inSeconds}s');
+            debugPrint(
+              'VideoPlayerCard ${widget.video.id}: Duration loaded: ${_duration.inSeconds}s',
+            );
           }
         }
       }
@@ -171,9 +183,6 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
 
-    // Check if this is the current route (list is visible)
-    final isCurrentRoute = ModalRoute.of(context)?.isCurrent ?? false;
-
     return Card(
       elevation: 4,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -190,7 +199,9 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
           children: [
             // Video Player
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
               child: Stack(
                 children: [
                   AspectRatio(
@@ -200,16 +211,15 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                       // Keep the video player in the widget tree but hide it when not current route
                       // This prevents disposing the platform view which would affect playback
                       child: (_shouldCreatePlayer && _controller != null)
-                          ? Offstage(
-                              offstage: !isCurrentRoute,
-                              child: NativeVideoPlayer(
-                                controller: _controller!,
-                                overlayBuilder: widget.useCustomOverlay
-                                    ? (context, controller) => CustomVideoOverlay(controller: controller)
-                                    : null,
-                              ),
+                          ? NativeVideoPlayer(
+                              controller: _controller!,
+                              overlayBuilder: widget.useCustomOverlay
+                                  ? (context, controller) => CustomVideoOverlay(
+                                      controller: controller,
+                                    )
+                                  : null,
                             )
-                          : null,
+                          : const SizedBox.shrink(),
                     ),
                   ),
                 ],
@@ -227,7 +237,10 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                     children: [
                       Flexible(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: state.isPlaying
                                 ? Colors.red
@@ -238,7 +251,11 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                           ),
                           child: Text(
                             _status,
-                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
@@ -246,7 +263,11 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                       ),
                       Text(
                         widget.video.title,
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -255,20 +276,34 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> with AutomaticKeepAli
                   const SizedBox(height: 8),
                   Text(
                     widget.video.description,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.4),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                      height: 1.4,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
+                      Icon(
+                        Icons.access_time,
+                        size: 16,
+                        color: Colors.grey[600],
+                      ),
                       const SizedBox(width: 4),
-                      Text(_formatDuration(_currentPosition), style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                      Text(
+                        _formatDuration(_currentPosition),
+                        style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                      ),
                       const SizedBox(width: 8),
                       Text('/', style: TextStyle(color: Colors.grey[500])),
                       const SizedBox(width: 8),
-                      Text(_formatDuration(_duration), style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+                      Text(
+                        _formatDuration(_duration),
+                        style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                      ),
                       const Spacer(),
                       Icon(Icons.chevron_right, color: Colors.grey[400]),
                     ],

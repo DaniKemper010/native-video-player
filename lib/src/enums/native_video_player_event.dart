@@ -36,7 +36,8 @@ class PlayerActivityEvent {
     final String eventName = map['event'] as String;
     final PlayerActivityState state = _stateFromString(eventName);
 
-    final Map<String, dynamic> data = Map<String, dynamic>.from(map)..remove('event');
+    final Map<String, dynamic> data = Map<String, dynamic>.from(map)
+      ..remove('event');
 
     return PlayerActivityEvent(state: state, data: data.isEmpty ? null : data);
   }
@@ -78,7 +79,8 @@ class PlayerControlEvent {
     final String eventName = map['event'] as String;
     final PlayerControlState state = _stateFromString(eventName, map);
 
-    final Map<String, dynamic> data = Map<String, dynamic>.from(map)..remove('event');
+    final Map<String, dynamic> data = Map<String, dynamic>.from(map)
+      ..remove('event');
 
     return PlayerControlEvent(state: state, data: data.isEmpty ? null : data);
   }
@@ -86,7 +88,10 @@ class PlayerControlEvent {
   final PlayerControlState state;
   final Map<String, dynamic>? data;
 
-  static PlayerControlState _stateFromString(String event, Map<dynamic, dynamic> map) {
+  static PlayerControlState _stateFromString(
+    String event,
+    Map<dynamic, dynamic> map,
+  ) {
     switch (event) {
       case 'qualityChange':
         return PlayerControlState.qualityChanged;
@@ -105,7 +110,9 @@ class PlayerControlEvent {
       case 'fullscreenChange':
         // Check if entering or exiting fullscreen from data
         final bool isFullscreen = map['isFullscreen'] as bool? ?? true;
-        return isFullscreen ? PlayerControlState.fullscreenEntered : PlayerControlState.fullscreenExited;
+        return isFullscreen
+            ? PlayerControlState.fullscreenEntered
+            : PlayerControlState.fullscreenExited;
       case 'timeUpdate':
         return PlayerControlState.timeUpdated;
       default:

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2025-10-23
+
+### Fixed
+- **iOS Automatic Picture-in-Picture for Shared Controllers**: Fixed critical issue where automatic PiP would not work correctly when multiple views share the same controller (e.g., list view + detail view scenario)
+  - Fixed race condition where multiple views observing the same shared player would compete for PiP control
+  - Added primary view tracking to ensure only the most recently active view can trigger automatic PiP
+  - Fixed automatic PiP not working for videos started with native controls (non-programmatic playback)
+  - Improved SharedPlayerManager to properly handle PiP state transfers between views with the same controller ID
+  - Added `isPrimaryView()` and `getPrimaryViewId()` methods to prevent observer conflicts
+
+### Changed
+- Enhanced observer logic to detect when playback starts via native controls and automatically set the view as primary
+- Improved logging for debugging PiP state transitions across multiple views
+
 ## [0.2.3] - 2025-10-21
 
 ### Fixed

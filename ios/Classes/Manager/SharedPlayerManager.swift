@@ -10,20 +10,30 @@ class SharedPlayerManager {
     static let shared = SharedPlayerManager()
 
     private var players: [Int: AVPlayer] = [:]
-    
+
     /// Track which controller currently has automatic PiP enabled
     /// Only one controller should have automatic PiP active at a time
     private var controllerWithAutomaticPiP: Int?
-    
+
     /// Track which view ID is the PRIMARY (most recently played) view for each controller
     /// This ensures we enable PiP on the correct view when multiple views exist (list + detail)
     private var primaryViewIdForController: [Int: Int64] = [:]
-    
+
     /// Store references to ALL active VideoPlayerView instances
     /// Multiple platform views can exist for the same controller (list + detail screen)
     /// We need weak references to avoid retain cycles
     /// Key is a unique identifier (viewId), value is the view
     private var videoPlayerViews: [String: WeakVideoPlayerViewWrapper] = [:]
+
+    /// Store PiP settings for each controller
+    /// This ensures PiP settings persist across all views using the same controller
+    private var pipSettings: [Int: PipSettings] = [:]
+
+    struct PipSettings {
+        let allowsPictureInPicture: Bool
+        let canStartPictureInPictureAutomatically: Bool
+        let showNativeControls: Bool
+    }
 
     private init() {}
 
@@ -39,16 +49,36 @@ class SharedPlayerManager {
         return (newPlayer, false)
     }
 
+    /// Sets PiP settings for a controller
+    /// This ensures the settings persist across all views using the same controller
+    func setPipSettings(for controllerId: Int, allowsPictureInPicture: Bool, canStartPictureInPictureAutomatically: Bool, showNativeControls: Bool) {
+        pipSettings[controllerId] = PipSettings(
+            allowsPictureInPicture: allowsPictureInPicture,
+            canStartPictureInPictureAutomatically: canStartPictureInPictureAutomatically,
+            showNativeControls: showNativeControls
+        )
+        print("   ✅ Stored PiP settings for controller \(controllerId) - allows: \(allowsPictureInPicture), autoStart: \(canStartPictureInPictureAutomatically)")
+    }
+
+    /// Gets PiP settings for a controller
+    /// Returns nil if no settings have been stored for this controller
+    func getPipSettings(for controllerId: Int) -> PipSettings? {
+        return pipSettings[controllerId]
+    }
+
     /// Removes a player (called when explicitly disposed)
     func removePlayer(for controllerId: Int) {
         players.removeValue(forKey: controllerId)
-        
+
         // Remove all views for this controller
         videoPlayerViews = videoPlayerViews.filter { $0.value.view?.controllerId != controllerId }
-        
+
         // Clear primary view tracking
         primaryViewIdForController.removeValue(forKey: controllerId)
-        
+
+        // Remove PiP settings
+        pipSettings.removeValue(forKey: controllerId)
+
         // If this was the controller with automatic PiP, clear it
         if controllerWithAutomaticPiP == controllerId {
             controllerWithAutomaticPiP = nil
@@ -60,6 +90,7 @@ class SharedPlayerManager {
         players.removeAll()
         videoPlayerViews.removeAll()
         primaryViewIdForController.removeAll()
+        pipSettings.removeAll()
         controllerWithAutomaticPiP = nil
     }
     
@@ -88,6 +119,16 @@ class SharedPlayerManager {
     func setPrimaryView(_ viewId: Int64, for controllerId: Int) {
         primaryViewIdForController[controllerId] = viewId
         print("   🎯 Set primary view for controller \(controllerId) → ViewId \(viewId)")
+    }
+
+    /// Check if a specific view is the primary view for a controller
+    func isPrimaryView(_ viewId: Int64, for controllerId: Int) -> Bool {
+        return primaryViewIdForController[controllerId] == viewId
+    }
+
+    /// Get the primary view ID for a controller (if any)
+    func getPrimaryViewId(for controllerId: Int) -> Int64? {
+        return primaryViewIdForController[controllerId]
     }
     
     /// Enable automatic PiP for a specific controller and disable for all others

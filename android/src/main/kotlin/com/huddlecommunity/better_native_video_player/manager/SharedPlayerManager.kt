@@ -2,6 +2,7 @@ package com.huddlecommunity.better_native_video_player.manager
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.media3.exoplayer.ExoPlayer
 import com.huddlecommunity.better_native_video_player.VideoPlayerMediaSessionService
 import com.huddlecommunity.better_native_video_player.handlers.VideoPlayerNotificationHandler
@@ -13,8 +14,24 @@ import com.huddlecommunity.better_native_video_player.handlers.VideoPlayerEventH
  * Note: Each platform view gets its own PlayerView, but they share the same ExoPlayer and NotificationHandler
  */
 object SharedPlayerManager {
+    private const val TAG = "SharedPlayerManager"
+
     private val players = mutableMapOf<Int, ExoPlayer>()
     private val notificationHandlers = mutableMapOf<Int, VideoPlayerNotificationHandler>()
+
+    // Track active platform views for each controller
+    // Map<ControllerId, Map<ViewId, SurfaceReconnectCallback>>
+    private val activeViews = mutableMapOf<Int, MutableMap<Long, () -> Unit>>()
+
+    // Store PiP settings for each controller
+    // This ensures PiP settings persist across all views using the same controller
+    private val pipSettings = mutableMapOf<Int, PipSettings>()
+
+    data class PipSettings(
+        val allowsPictureInPicture: Boolean,
+        val canStartPictureInPictureAutomatically: Boolean,
+        val showNativeControls: Boolean
+    )
 
     /**
      * Gets or creates a player for the given controller ID
@@ -43,6 +60,67 @@ object SharedPlayerManager {
     }
 
     /**
+     * Registers a platform view for a controller
+     * The callback will be called when another view using the same controller is disposed
+     */
+    fun registerView(controllerId: Int, viewId: Long, reconnectCallback: () -> Unit) {
+        val views = activeViews.getOrPut(controllerId) { mutableMapOf() }
+        views[viewId] = reconnectCallback
+        Log.d(TAG, "Registered view $viewId for controller $controllerId (total views: ${views.size})")
+    }
+
+    /**
+     * Unregisters a platform view and notifies other views to reconnect
+     */
+    fun unregisterView(controllerId: Int, viewId: Long) {
+        val views = activeViews[controllerId]
+        if (views != null) {
+            views.remove(viewId)
+            Log.d(TAG, "Unregistered view $viewId for controller $controllerId (remaining views: ${views.size})")
+
+            // Notify all remaining views to reconnect their surfaces
+            views.values.forEach { callback ->
+                try {
+                    callback()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error calling reconnect callback: ${e.message}", e)
+                }
+            }
+
+            // Clean up empty maps
+            if (views.isEmpty()) {
+                activeViews.remove(controllerId)
+            }
+        }
+    }
+
+    /**
+     * Sets PiP settings for a controller
+     * This ensures the settings persist across all views using the same controller
+     */
+    fun setPipSettings(
+        controllerId: Int,
+        allowsPictureInPicture: Boolean,
+        canStartPictureInPictureAutomatically: Boolean,
+        showNativeControls: Boolean
+    ) {
+        pipSettings[controllerId] = PipSettings(
+            allowsPictureInPicture = allowsPictureInPicture,
+            canStartPictureInPictureAutomatically = canStartPictureInPictureAutomatically,
+            showNativeControls = showNativeControls
+        )
+        Log.d(TAG, "Set PiP settings for controller $controllerId - allows: $allowsPictureInPicture, autoStart: $canStartPictureInPictureAutomatically")
+    }
+
+    /**
+     * Gets PiP settings for a controller
+     * Returns null if no settings have been stored for this controller
+     */
+    fun getPipSettings(controllerId: Int): PipSettings? {
+        return pipSettings[controllerId]
+    }
+
+    /**
      * Removes a player (called when explicitly disposed)
      */
     fun removePlayer(context: Context, controllerId: Int) {
@@ -53,6 +131,9 @@ object SharedPlayerManager {
         // Release player
         players[controllerId]?.release()
         players.remove(controllerId)
+
+        // Remove PiP settings
+        pipSettings.remove(controllerId)
 
         // If no more players, stop the service
         if (players.isEmpty()) {
@@ -71,6 +152,9 @@ object SharedPlayerManager {
         // Release all players
         players.values.forEach { it.release() }
         players.clear()
+
+        // Clear PiP settings
+        pipSettings.clear()
 
         // Stop the service when clearing all players
         stopMediaSessionService(context)

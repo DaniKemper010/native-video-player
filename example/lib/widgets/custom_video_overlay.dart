@@ -27,14 +27,25 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
   double _currentSpeed = 1.0;
 
   // Available playback speeds
-  static const List<double> _availableSpeeds = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  static const List<double> _availableSpeeds = [
+    0.25,
+    0.5,
+    0.75,
+    1.0,
+    1.25,
+    1.5,
+    1.75,
+    2.0,
+  ];
 
   @override
   void initState() {
     super.initState();
     widget.controller.addActivityListener(_handleActivityEvent);
     widget.controller.addControlListener(_handleControlEvent);
-    widget.controller.addAirPlayAvailabilityListener(_handleAirPlayAvailabilityChange);
+    widget.controller.addAirPlayAvailabilityListener(
+      _handleAirPlayAvailabilityChange,
+    );
 
     // Get initial state
     _currentPosition = widget.controller.currentPosition;
@@ -44,7 +55,9 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
 
     _getPipAvailability();
 
-    debugPrint('CustomVideoOverlay initialized with ${_qualities.length} qualities');
+    debugPrint(
+      'CustomVideoOverlay initialized with ${_qualities.length} qualities',
+    );
   }
 
   void _getPipAvailability() async {
@@ -72,13 +85,17 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
   void dispose() {
     widget.controller.removeActivityListener(_handleActivityEvent);
     widget.controller.removeControlListener(_handleControlEvent);
-    widget.controller.removeAirPlayAvailabilityListener(_handleAirPlayAvailabilityChange);
+    widget.controller.removeAirPlayAvailabilityListener(
+      _handleAirPlayAvailabilityChange,
+    );
     super.dispose();
   }
 
   void _handleActivityEvent(PlayerActivityEvent event) {
     if (!mounted) {
-      debugPrint('CustomVideoOverlay._handleActivityEvent called but not mounted');
+      debugPrint(
+        'CustomVideoOverlay._handleActivityEvent called but not mounted',
+      );
       return;
     }
     debugPrint('CustomVideoOverlay._handleActivityEvent: ${event.state}');
@@ -89,7 +106,9 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
 
   void _handleControlEvent(PlayerControlEvent event) {
     if (!mounted) {
-      debugPrint('CustomVideoOverlay._handleControlEvent called but not mounted');
+      debugPrint(
+        'CustomVideoOverlay._handleControlEvent called but not mounted',
+      );
       return;
     }
 
@@ -113,10 +132,6 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
       return;
     }
 
-    if (!_isPipAvailable) {
-      _getPipAvailability();
-    }
-
     if (event.state == PlayerControlState.timeUpdated && !_isSeeking) {
       setState(() {
         _currentPosition = widget.controller.currentPosition;
@@ -128,7 +143,9 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
       setState(() {
         _qualities = widget.controller.qualities;
         if (event.data != null && event.data!.containsKey('quality')) {
-          _currentQuality = NativeVideoPlayerQuality.fromMap(event.data!['quality'] as Map<dynamic, dynamic>);
+          _currentQuality = NativeVideoPlayerQuality.fromMap(
+            event.data!['quality'] as Map<dynamic, dynamic>,
+          );
         }
       });
     } else if (event.state == PlayerControlState.speedChanged) {
@@ -143,7 +160,9 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     } else if (event.state == PlayerControlState.fullscreenEntered ||
         event.state == PlayerControlState.fullscreenExited) {
       // Trigger rebuild when fullscreen state changes so controls visibility updates
-      debugPrint('CustomVideoOverlay: Fullscreen state changed to ${widget.controller.isFullScreen}');
+      debugPrint(
+        'CustomVideoOverlay: Fullscreen state changed to ${widget.controller.isFullScreen}',
+      );
       setState(() {
         // No state to update, just trigger rebuild to update conditional UI elements
       });
@@ -214,7 +233,10 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
               // PiP button (only shown if available and not in fullscreen)
               if (_isPipAvailable)
                 IconButton(
-                  icon: const Icon(Icons.picture_in_picture_alt, color: Colors.white),
+                  icon: const Icon(
+                    Icons.picture_in_picture_alt,
+                    color: Colors.white,
+                  ),
                   onPressed: () async {
                     await widget.controller.enterPictureInPicture();
                   },
@@ -242,7 +264,9 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
               IconButton(
                 icon: const Icon(Icons.replay_10, color: Colors.white),
                 onPressed: () {
-                  widget.controller.seekTo(_currentPosition - const Duration(seconds: 10));
+                  widget.controller.seekTo(
+                    _currentPosition - const Duration(seconds: 10),
+                  );
                 },
               ),
 
@@ -253,7 +277,9 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
               IconButton(
                 icon: const Icon(Icons.forward_10, color: Colors.white),
                 onPressed: () {
-                  widget.controller.seekTo(_currentPosition + const Duration(seconds: 10));
+                  widget.controller.seekTo(
+                    _currentPosition + const Duration(seconds: 10),
+                  );
                 },
               ),
             ],
@@ -274,41 +300,61 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
                 child: Row(
                   spacing: 8,
                   children: [
-                    Text(_formatDuration(_currentPosition), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                    Text(
+                      _formatDuration(_currentPosition),
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
                     Expanded(
                       child: SliderTheme(
                         data: SliderThemeData(
                           trackHeight: 4,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 6,
+                          ),
+                          overlayShape: const RoundSliderOverlayShape(
+                            overlayRadius: 12,
+                          ),
                           activeTrackColor: Colors.red,
-                          inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
-                          secondaryActiveTrackColor: Colors.white.withValues(alpha: 0.5),
+                          inactiveTrackColor: Colors.white.withValues(
+                            alpha: 0.3,
+                          ),
+                          secondaryActiveTrackColor: Colors.white.withValues(
+                            alpha: 0.5,
+                          ),
                           thumbColor: Colors.red,
                           overlayColor: Colors.red.withValues(alpha: 0.3),
                         ),
                         child: Slider(
                           value: _duration.inMilliseconds > 0
-                              ? _currentPosition.inMilliseconds.toDouble().clamp(
-                                  0.0,
-                                  _duration.inMilliseconds.toDouble(),
-                                )
+                              ? _currentPosition.inMilliseconds
+                                    .toDouble()
+                                    .clamp(
+                                      0.0,
+                                      _duration.inMilliseconds.toDouble(),
+                                    )
                               : 0.0,
                           secondaryTrackValue: _duration.inMilliseconds > 0
-                              ? _bufferedPosition.inMilliseconds.toDouble().clamp(
-                                  0.0,
-                                  _duration.inMilliseconds.toDouble(),
-                                )
+                              ? _bufferedPosition.inMilliseconds
+                                    .toDouble()
+                                    .clamp(
+                                      0.0,
+                                      _duration.inMilliseconds.toDouble(),
+                                    )
                               : 0.0,
                           min: 0,
-                          max: _duration.inMilliseconds > 0 ? _duration.inMilliseconds.toDouble() : 1.0,
+                          max: _duration.inMilliseconds > 0
+                              ? _duration.inMilliseconds.toDouble()
+                              : 1.0,
                           onChangeStart: _onSeekStart,
                           onChanged: _onSeekChange,
                           onChangeEnd: _onSeekEnd,
                         ),
                       ),
                     ),
-                    Text(_formatDuration(_duration), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                    Text(
+                      _formatDuration(_duration),
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
                     // Speed control (only in fullscreen to avoid platform view disposal)
                     if (widget.controller.isFullScreen)
                       TextButton(
@@ -318,7 +364,13 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         ),
-                        child: Text('${_currentSpeed}x', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                        child: Text(
+                          '${_currentSpeed}x',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
                     // Quality control (only in fullscreen to avoid platform view disposal)
                     if (widget.controller.isFullScreen && _qualities.isNotEmpty)
@@ -331,13 +383,18 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
                         ),
                         child: Text(
                           _currentQuality?.label ?? 'Auto',
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     // Fullscreen toggle
                     IconButton(
                       icon: Icon(
-                        widget.controller.isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                        widget.controller.isFullScreen
+                            ? Icons.fullscreen_exit
+                            : Icons.fullscreen,
                         color: Colors.white,
                       ),
                       onPressed: () {
@@ -367,22 +424,31 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
           stops: const [0.0, 0.3, 0.7, 1.0],
         ),
       ),
-      child: widget.controller.isFullScreen ? SafeArea(child: stackWidget) : stackWidget,
+      child: widget.controller.isFullScreen
+          ? SafeArea(child: stackWidget)
+          : stackWidget,
     );
   }
 
   Widget _buildPlayPauseButton() {
     // Show loading indicator when buffering or loading
-    if (_activityState == PlayerActivityState.buffering || _activityState == PlayerActivityState.loading) {
+    if (_activityState == PlayerActivityState.buffering ||
+        _activityState == PlayerActivityState.loading) {
       return Container(
         width: 64,
         height: 64,
-        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.5),
+          shape: BoxShape.circle,
+        ),
         child: const Center(
           child: SizedBox(
             width: 32,
             height: 32,
-            child: CircularProgressIndicator(strokeWidth: 3, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
           ),
         ),
       );
@@ -392,11 +458,20 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     return Container(
       width: 64,
       height: 64,
-      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.5),
+        shape: BoxShape.circle,
+      ),
       child: IconButton(
-        icon: Icon(_activityState.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white, size: 36),
+        icon: Icon(
+          _activityState.isPlaying ? Icons.pause : Icons.play_arrow,
+          color: Colors.white,
+          size: 36,
+        ),
         onPressed: () {
-          debugPrint('Play/Pause button pressed, isPlaying: ${_activityState.isPlaying}');
+          debugPrint(
+            'Play/Pause button pressed, isPlaying: ${_activityState.isPlaying}',
+          );
           if (_activityState.isPlaying) {
             widget.controller.pause();
           } else {
@@ -423,7 +498,11 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
                 padding: const EdgeInsets.all(16.0),
                 child: Text(
                   'Select Quality',
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const Divider(color: Colors.white24, height: 1),
@@ -437,19 +516,25 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
                         quality.label,
                         style: TextStyle(
                           color: isSelected ? Colors.red : Colors.white,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                       subtitle: quality.bitrate != null
                           ? Text(
                               '${quality.width ?? '?'}x${quality.height ?? '?'} - ${(quality.bitrate! / 1000000).toStringAsFixed(2)} Mbps',
                               style: TextStyle(
-                                color: isSelected ? Colors.red.withValues(alpha: 0.7) : Colors.white70,
+                                color: isSelected
+                                    ? Colors.red.withValues(alpha: 0.7)
+                                    : Colors.white70,
                                 fontSize: 12,
                               ),
                             )
                           : null,
-                      trailing: isSelected ? const Icon(Icons.check, color: Colors.red) : null,
+                      trailing: isSelected
+                          ? const Icon(Icons.check, color: Colors.red)
+                          : null,
                       onTap: () {
                         widget.controller.setQuality(quality);
                         Navigator.pop(context);
@@ -486,7 +571,11 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
                 padding: const EdgeInsets.all(16.0),
                 child: Text(
                   'Playback Speed',
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const Divider(color: Colors.white24, height: 1),
@@ -500,7 +589,9 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
                         '${speed}x',
                         style: TextStyle(
                           color: isSelected ? Colors.red : Colors.white,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                       subtitle: Text(
@@ -510,11 +601,15 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
                             ? 'Slower'
                             : 'Faster',
                         style: TextStyle(
-                          color: isSelected ? Colors.red.withValues(alpha: 0.7) : Colors.white70,
+                          color: isSelected
+                              ? Colors.red.withValues(alpha: 0.7)
+                              : Colors.white70,
                           fontSize: 12,
                         ),
                       ),
-                      trailing: isSelected ? const Icon(Icons.check, color: Colors.red) : null,
+                      trailing: isSelected
+                          ? const Icon(Icons.check, color: Colors.red)
+                          : null,
                       onTap: () async {
                         debugPrint('Setting speed to: $speed');
                         await widget.controller.setSpeed(speed);

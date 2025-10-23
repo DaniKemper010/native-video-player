@@ -95,10 +95,40 @@ class VideoPlayerView(
         Log.d(TAG, "Initial fullscreen state: $isFullScreen")
 
         // Extract PiP settings from args
-        allowsPictureInPicture = args?.get("allowsPictureInPicture") as? Boolean ?: true
-        canStartPictureInPictureAutomatically = args?.get("canStartPictureInPictureAutomatically") as? Boolean ?: false
-        showNativeControlsOriginal = args?.get("showNativeControls") as? Boolean ?: true
-        Log.d(TAG, "PiP settings - allows: $allowsPictureInPicture, autoStart: $canStartPictureInPictureAutomatically, showControls: $showNativeControlsOriginal")
+        val argsAllowsPiP = args?.get("allowsPictureInPicture") as? Boolean ?: true
+        val argsCanStartPiPAuto = args?.get("canStartPictureInPictureAutomatically") as? Boolean ?: false
+        val argsShowNativeControls = args?.get("showNativeControls") as? Boolean ?: true
+
+        // For shared players, try to get PiP settings from SharedPlayerManager
+        // This ensures PiP settings persist across all views using the same controller
+        if (controllerId != null) {
+            val sharedSettings = SharedPlayerManager.getPipSettings(controllerId)
+            if (sharedSettings != null) {
+                // Use existing shared settings
+                allowsPictureInPicture = sharedSettings.allowsPictureInPicture
+                canStartPictureInPictureAutomatically = sharedSettings.canStartPictureInPictureAutomatically
+                showNativeControlsOriginal = sharedSettings.showNativeControls
+                Log.d(TAG, "Using shared PiP settings for controller $controllerId - allows: $allowsPictureInPicture, autoStart: $canStartPictureInPictureAutomatically")
+            } else {
+                // First view for this controller - store the settings
+                allowsPictureInPicture = argsAllowsPiP
+                canStartPictureInPictureAutomatically = argsCanStartPiPAuto
+                showNativeControlsOriginal = argsShowNativeControls
+                SharedPlayerManager.setPipSettings(
+                    controllerId = controllerId,
+                    allowsPictureInPicture = allowsPictureInPicture,
+                    canStartPictureInPictureAutomatically = canStartPictureInPictureAutomatically,
+                    showNativeControls = showNativeControlsOriginal
+                )
+                Log.d(TAG, "Stored new PiP settings for controller $controllerId - allows: $allowsPictureInPicture, autoStart: $canStartPictureInPictureAutomatically")
+            }
+        } else {
+            // Non-shared player - use settings from args
+            allowsPictureInPicture = argsAllowsPiP
+            canStartPictureInPictureAutomatically = argsCanStartPiPAuto
+            showNativeControlsOriginal = argsShowNativeControls
+            Log.d(TAG, "PiP settings for non-shared player - allows: $allowsPictureInPicture, autoStart: $canStartPictureInPictureAutomatically, showControls: $showNativeControlsOriginal")
+        }
         
         // Extract and store media info from args (if provided during initialization)
         // This ensures we have the correct media info even for shared players
@@ -226,9 +256,20 @@ class VideoPlayerView(
             player = player,
             eventHandler = eventHandler,
             notificationHandler = notificationHandler,
-            getMediaInfo = { currentMediaInfo }
+            getMediaInfo = { currentMediaInfo },
+            controllerId = controllerId,
+            viewId = viewId,
+            canStartPictureInPictureAutomatically = canStartPictureInPictureAutomatically
         )
         player.addListener(observer)
+
+        // Register this view with SharedPlayerManager if using a shared player
+        // This allows other views to notify us when they're disposed
+        if (controllerId != null) {
+            SharedPlayerManager.registerView(controllerId, viewId) {
+                reconnectSurface()
+            }
+        }
 
         // Setup event channel
         val eventChannelName = "native_video_player_$viewId"
@@ -489,6 +530,18 @@ class VideoPlayerView(
             ))
         }
 
+        // Force the PlayerView to reattach its surface to the player
+        // This is necessary because moving the view between parents can disconnect the surface
+        playerView.post {
+            // Temporarily detach and reattach the player to ensure surface is connected
+            val currentPlayer = playerView.player
+            if (currentPlayer != null) {
+                playerView.player = null
+                playerView.player = currentPlayer
+                Log.d(TAG, "Reattached player to surface after exiting fullscreen")
+            }
+        }
+
         // Restore system UI on the activity window
         activity.window?.let { activityWindow ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -722,6 +775,30 @@ class VideoPlayerView(
         Log.d(TAG, "ExoPlayer controls restored to: $showNativeControlsOriginal")
     }
 
+    /**
+     * Reconnects the player's surface to the PlayerView
+     * This is called when another platform view using the same shared player is disposed
+     */
+    private fun reconnectSurface() {
+        if (isDisposed) {
+            Log.d(TAG, "Ignoring surface reconnect - view is disposed")
+            return
+        }
+
+        Log.d(TAG, "Reconnecting surface for view $viewId (notified by another view disposal)")
+        playerView.post {
+            // Temporarily detach and reattach the player to ensure surface is connected
+            val currentPlayer = playerView.player
+            if (currentPlayer != null) {
+                playerView.player = null
+                playerView.player = currentPlayer
+                Log.d(TAG, "Surface reconnected successfully for view $viewId")
+            } else {
+                Log.w(TAG, "Cannot reconnect surface - player is null")
+            }
+        }
+    }
+
     override fun dispose() {
         Log.d(TAG, "VideoPlayerView dispose for id: $viewId")
 
@@ -754,6 +831,16 @@ class VideoPlayerView(
         // The shared player and notification handler will be kept alive for reuse
         if (controllerId != null) {
             Log.d(TAG, "Platform view disposed but player and notification handler kept alive for controller ID: $controllerId")
+
+            // IMPORTANT: For shared players, detach the player from this PlayerView to prevent
+            // disconnecting the surface. Another platform view may still be using the player.
+            // If we don't detach here, disposing this view will disconnect the player's surface,
+            // leaving other views without video frames.
+            playerView.player = null
+            Log.d(TAG, "Detached player from PlayerView to preserve surface for other views")
+
+            // Unregister this view and notify remaining views to reconnect their surfaces
+            SharedPlayerManager.unregisterView(controllerId, viewId)
         } else {
             // Only release if not shared
             notificationHandler.release()

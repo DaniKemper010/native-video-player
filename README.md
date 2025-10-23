@@ -704,6 +704,24 @@ final controller1 = NativeVideoPlayerController(id: 1);
 final controller2 = NativeVideoPlayerController(id: 2);
 ```
 
+**Shared controllers with automatic PiP:**
+```dart
+// When using the same controller ID across multiple views (e.g., list + detail screen),
+// automatic PiP will be enabled on the most recently active view
+final listController = NativeVideoPlayerController(
+  id: 1, // Same ID
+  canStartPictureInPictureAutomatically: true,
+);
+
+final detailController = NativeVideoPlayerController(
+  id: 1, // Same ID - shares the player instance
+  canStartPictureInPictureAutomatically: true,
+);
+
+// When navigating to detail screen, automatic PiP transfers to that view
+// This works for both programmatic playback and native control playback
+```
+
 **Memory leaks:**
 ```dart
 // Always remove listeners and dispose controllers
