@@ -162,18 +162,21 @@ extension VideoPlayerView {
     func handlePlay(result: @escaping FlutterResult) {
         try? AVAudioSession.sharedInstance().setActive(true)
 
-        // Set media item on every play to ensure this player has control
+        // ALWAYS set media item on play to ensure this player has control
+        // This is critical for both normal playback and PiP mode
         if let mediaInfo = currentMediaInfo {
             let title = mediaInfo["title"] ?? "Unknown"
             print("📱 Setting Now Playing info for: \(title)")
             setupNowPlayingInfo(mediaInfo: mediaInfo)
-            
+
             // Verify it was set correctly
             if let nowPlayingTitle = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String {
                 print("✅  Now Playing info confirmed: \(nowPlayingTitle)")
+            } else {
+                print("⚠️  Failed to set Now Playing info")
             }
         } else {
-            print("⚠️  No media info available when playing")
+            print("⚠️  No media info available when playing - media controls will not work correctly")
         }
         
         // Mark this view as the primary (active) view for this controller

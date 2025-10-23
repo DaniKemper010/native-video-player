@@ -96,13 +96,21 @@ class VideoPlayerObserver(
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         Log.d(TAG, "Is playing changed: $isPlaying, playbackState: ${player.playbackState}")
         if (isPlaying) {
-            // Update media session/notification when playback starts
-            // This ensures it's updated even when native controls are used
+            // ALWAYS update media session/notification when playback starts
+            // This ensures media controls show the correct info whether in normal view or PiP
             val mediaInfo = getMediaInfo?.invoke()
             if (mediaInfo != null && notificationHandler != null) {
                 val title = mediaInfo["title"] as? String
                 Log.d(TAG, "📱 [Observer] Player started playing, updating media session for: $title")
                 notificationHandler.setupMediaSession(mediaInfo)
+                Log.d(TAG, "✅ [Observer] Media session updated - controls should now show correct info")
+            } else {
+                if (mediaInfo == null) {
+                    Log.w(TAG, "⚠️ [Observer] No media info available when playing - media controls may not show correctly")
+                }
+                if (notificationHandler == null) {
+                    Log.w(TAG, "⚠️ [Observer] No notification handler available")
+                }
             }
             eventHandler.sendEvent("play")
         } else {

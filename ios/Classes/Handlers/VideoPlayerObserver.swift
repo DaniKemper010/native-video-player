@@ -80,11 +80,13 @@ extension VideoPlayerView {
 
                 switch player.timeControlStatus {
                 case .playing:
-                    // Update Now Playing info when playback starts
-                    // This ensures it's updated even when native controls are used
+                    // ALWAYS update Now Playing info when playback starts
+                    // This ensures media controls show the correct info whether in normal view or PiP
                     if let mediaInfo = currentMediaInfo {
                         print("📱 [Observer] Player started playing, updating Now Playing info for: \(mediaInfo["title"] ?? "Unknown")")
                         setupNowPlayingInfo(mediaInfo: mediaInfo)
+                    } else {
+                        print("⚠️ [Observer] No media info available when playing - media controls may not show correctly")
                     }
 
                     // Enable automatic PiP when playback starts (even from native controls)
@@ -117,6 +119,13 @@ extension VideoPlayerView {
                                 if shouldEnableAutoPiP {
                                     print("📱 [Observer] Enabling automatic PiP for controller \(controllerIdValue) (triggered by native controls)")
                                     SharedPlayerManager.shared.setAutomaticPiPEnabled(for: controllerIdValue, enabled: true)
+
+                                    // Ensure media info is set again after enabling PiP
+                                    // This guarantees media controls work correctly in PiP mode
+                                    if let mediaInfo = currentMediaInfo {
+                                        setupNowPlayingInfo(mediaInfo: mediaInfo)
+                                        print("✅ [Observer] Media info updated for PiP mode")
+                                    }
                                 } else {
                                     print("📱 [Observer] Automatic PiP not enabled (canStartPictureInPictureAutomatically = false)")
                                 }

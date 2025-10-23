@@ -136,31 +136,43 @@ class VideoPlayerNotificationHandler(
      * MediaSession automatically provides lock screen controls and system media notification
      */
     fun setupMediaSession(mediaInfo: Map<String, Any>?) {
-        // Extract and store metadata immediately
-        mediaInfo?.let { info ->
-            currentTitle = (info["title"] as? String) ?: "Video"
-            currentSubtitle = (info["subtitle"] as? String) ?: ""
-            Log.d(TAG, "Stored metadata - title: $currentTitle, subtitle: $currentSubtitle")
-        }
+        // Extract metadata from the provided info
+        val newTitle = (mediaInfo?.get("title") as? String) ?: "Video"
+        val newSubtitle = (mediaInfo?.get("subtitle") as? String) ?: ""
 
-        // If MediaSession already exists, just update the metadata and clear old artwork
+        // Check if media info has actually changed to avoid unnecessary updates
+        val mediaInfoChanged = (newTitle != currentTitle || newSubtitle != currentSubtitle)
+
+        // Store the new metadata
+        currentTitle = newTitle
+        currentSubtitle = newSubtitle
+        Log.d(TAG, "📱 Media info - title: $currentTitle, subtitle: $currentSubtitle, changed: $mediaInfoChanged")
+
+        // If MediaSession already exists, only update if media info changed
         if (mediaSession != null) {
-            Log.d(TAG, "MediaSession already exists - updating for new video")
-            currentArtwork = null // Clear old artwork
-            currentArtworkUrl = null // Clear artwork URL to ignore pending loads
+            // Only update MediaItem if the info actually changed to avoid playback interruptions
+            if (mediaInfoChanged) {
+                Log.d(TAG, "📱 MediaSession exists - media info changed, updating metadata")
+                currentArtwork = null // Clear old artwork
+                currentArtworkUrl = null // Clear artwork URL to ignore pending loads
 
-            // NOTE: We DON'T call updatePlayerMediaItemMetadata here because handleLoad()
-            // already set the new MediaItem with correct metadata before calling this method
+                // Update the player's MediaItem with the new metadata
+                updatePlayerMediaItemMetadata(mediaInfo)
 
-            // Set metadata if provided (loads artwork asynchronously)
-            mediaInfo?.let { info ->
-                updateMediaMetadata(info)
-            }
+                // Load new artwork asynchronously
+                mediaInfo?.let { info ->
+                    updateMediaMetadata(info)
+                }
 
-            // Force MediaSession to refresh by invalidating and rebuilding the notification
-            // This ensures the notification shows the new video info even if paused
-            handler.post {
-                updateNotification()
+                // Update notification with new info
+                handler.post {
+                    if (player.playWhenReady) {
+                        updateNotification()
+                        Log.d(TAG, "✅ Notification updated with new media info")
+                    }
+                }
+            } else {
+                Log.d(TAG, "📱 MediaSession exists - media info unchanged, skipping update to avoid interruption")
             }
             return
         }
@@ -189,7 +201,13 @@ class VideoPlayerNotificationHandler(
 
         Log.d(TAG, "MediaSession created - lock screen and notification controls active")
 
-        // Set metadata if provided
+        // Set metadata on the player's MediaItem first (for MediaSession to use)
+        mediaInfo?.let { info ->
+            updatePlayerMediaItemMetadata(info)
+            Log.d(TAG, "Initial MediaItem metadata set for new MediaSession")
+        }
+
+        // Load artwork asynchronously if provided
         mediaInfo?.let { info ->
             updateMediaMetadata(info)
         }
@@ -293,31 +311,16 @@ class VideoPlayerNotificationHandler(
                 bitmap?.let {
                     currentArtwork = it
 
-                    // Update artwork by rebuilding MediaItem with artwork
-                    val currentItem = player.currentMediaItem
-                    if (currentItem != null) {
-                        val existingMetadata = currentItem.mediaMetadata
-                        val updatedMetadata = existingMetadata.buildUpon()
-                            .setArtworkData(bitmapToByteArray(it), MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                            .build()
-
-                        val updatedItem = currentItem.buildUpon()
-                            .setMediaMetadata(updatedMetadata)
-                            .build()
-
-                        // Replace the item without interrupting playback
-                        val wasPlaying = player.isPlaying
-                        val position = player.currentPosition
-                        player.replaceMediaItem(player.currentMediaItemIndex, updatedItem)
-                        player.seekTo(position)
-                        if (wasPlaying) player.play()
-
-                        // Update notification with artwork
-                        if (player.playWhenReady) {
+                    // Update notification directly with the new artwork
+                    // DO NOT call replaceMediaItem here as it can interrupt playback
+                    // The notification will use currentArtwork automatically
+                    if (player.playWhenReady) {
+                        handler.post {
                             updateNotification()
+                            Log.d(TAG, "Artwork loaded and notification updated for $artworkUrl")
                         }
-
-                        Log.d(TAG, "Artwork loaded and metadata updated for $artworkUrl")
+                    } else {
+                        Log.d(TAG, "Artwork loaded but player not ready, will show on next play")
                     }
                 }
             }
