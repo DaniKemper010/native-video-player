@@ -84,14 +84,16 @@ class _VideoPlayerCardState extends State<VideoPlayerCard>
   @override
   void initState() {
     super.initState();
-    if (_controller == null) {
-      setState(() {
-        _shouldCreatePlayer = true;
-        _status = 'Loading...';
-        state = PlayerActivityState.loading;
-      });
-      unawaited(_ensureControllerCreated());
-    }
+    _init();
+  }
+
+  void _init() {
+    setState(() {
+      _shouldCreatePlayer = true;
+      _status = 'Loading...';
+      state = PlayerActivityState.loading;
+    });
+    unawaited(_ensureControllerCreated());
   }
 
   void _handleActivityEvent(PlayerActivityEvent event) {
@@ -191,6 +193,8 @@ class _VideoPlayerCardState extends State<VideoPlayerCard>
         onTap: () {
           if (_controller != null) {
             widget.onTap(_controller!);
+          } else {
+            _init();
           }
         },
         borderRadius: BorderRadius.circular(16),
@@ -306,6 +310,18 @@ class _VideoPlayerCardState extends State<VideoPlayerCard>
                       ),
                       const Spacer(),
                       Icon(Icons.chevron_right, color: Colors.grey[400]),
+                      IconButton(
+                        onPressed: () {
+                          _controller?.dispose();
+                          _controller = null;
+                          setState(() {
+                            _shouldCreatePlayer = false;
+                            _status = 'Disposed';
+                            state = PlayerActivityState.idle;
+                          });
+                        },
+                        icon: Icon(Icons.cancel),
+                      ),
                     ],
                   ),
                 ],

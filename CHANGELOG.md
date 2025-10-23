@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2025-10-23
+
+### Fixed
+- **Critical Controller Disposal Bug**: Fixed incomplete resource cleanup in `NativeVideoPlayerController.dispose()` method
+  - Added proper cleanup of PiP event subscription (Android global listener)
+  - Added cleanup of AirPlay listeners (availability and connection handlers)
+  - Added cleanup of platform view contexts map
+  - Added cleanup of overlay builder and fullscreen callback references
+  - Fixed memory leaks by ensuring all event handlers and subscriptions are properly cancelled
+
+- **Android Player Reinitialization Issue**: Fixed critical bug where Android players could not be reinitialized after disposal
+  - Fixed `VideoPlayerMethodHandler.handleDispose()` to properly remove player from `SharedPlayerManager`
+  - Added `controllerId` parameter to `VideoPlayerMethodHandler` constructor
+  - Now properly releases ExoPlayer, notification handler, and clears PiP settings on disposal
+  - Android players can now be disposed and recreated just like iOS players
+
+### Changed
+- Enhanced `VideoPlayerMethodChannel` with new `dispose()` method that calls native platform disposal
+- Updated Flutter controller `dispose()` to call native cleanup via method channel
+- Improved disposal flow to ensure both Flutter and native resources are properly cleaned up
+
+### Documentation
+- Updated `dispose()` method documentation to reflect proper disposal of both Flutter and native platform resources
+
 ## [0.2.5] - 2025-10-23
 
 ### Improved

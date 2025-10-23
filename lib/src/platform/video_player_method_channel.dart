@@ -233,4 +233,15 @@ class VideoPlayerMethodChannel {
       debugPrint('Error calling showAirPlayPicker: $e');
     }
   }
+
+  /// Disposes the native player resources
+  Future<void> dispose() async {
+    try {
+      await _methodChannel.invokeMethod<void>('dispose', <String, Object>{
+        'viewId': primaryPlatformViewId,
+      });
+    } catch (e) {
+      debugPrint('Error calling dispose: $e');
+    }
+  }
 }

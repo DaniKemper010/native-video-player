@@ -28,7 +28,8 @@ class VideoPlayerMethodHandler(
     private val player: ExoPlayer,
     private val eventHandler: VideoPlayerEventHandler,
     private val notificationHandler: VideoPlayerNotificationHandler,
-    private val updateMediaInfo: ((Map<String, Any>?) -> Unit)? = null
+    private val updateMediaInfo: ((Map<String, Any>?) -> Unit)? = null,
+    private val controllerId: Int? = null
 ) {
     companion object {
         private const val TAG = "VideoPlayerMethod"
@@ -352,6 +353,13 @@ class VideoPlayerMethodHandler(
      */
     private fun handleDispose(result: MethodChannel.Result) {
         player.stop()
+
+        // Remove from shared manager if this is a shared player
+        if (controllerId != null) {
+            com.huddlecommunity.better_native_video_player.manager.SharedPlayerManager.removePlayer(context, controllerId)
+            Log.d(TAG, "Removed shared player for controller ID: $controllerId")
+        }
+
         eventHandler.sendEvent("stopped")
         result.success(null)
     }

@@ -236,7 +236,8 @@ class VideoPlayerView(
             player = player,
             eventHandler = eventHandler,
             notificationHandler = notificationHandler,
-            updateMediaInfo = { mediaInfo -> currentMediaInfo = mediaInfo }
+            updateMediaInfo = { mediaInfo -> currentMediaInfo = mediaInfo },
+            controllerId = controllerId
         )
 
         // Set fullscreen callback for method handler

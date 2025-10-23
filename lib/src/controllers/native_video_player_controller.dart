@@ -793,12 +793,15 @@ class NativeVideoPlayerController {
   /// Disposes of resources and cleans up platform channels
   ///
   /// Should be called when the video player is no longer needed.
-  /// The native player is automatically disposed when the platform view is destroyed.
+  /// Properly disposes both Flutter and native platform resources.
   Future<void> dispose() async {
     // Exit fullscreen if active
     if (_state.isFullScreen) {
       await exitFullScreen();
     }
+
+    // Dispose native player resources (removes shared player from manager)
+    await _methodChannel?.dispose();
 
     // Cancel all event channel subscriptions
     for (final StreamSubscription<dynamic> subscription
@@ -807,13 +810,29 @@ class NativeVideoPlayerController {
     }
     _eventSubscriptions.clear();
 
+    // Cancel PiP event subscription (Android only)
+    await _pipEventSubscription?.cancel();
+    _pipEventSubscription = null;
+
+    // Clear all event handlers
+    _activityEventHandlers.clear();
+    _controlEventHandlers.clear();
+    _airPlayAvailabilityHandlers.clear();
+    _airPlayConnectionHandlers.clear();
+
+    // Clear platform view references
+    _platformViewIds.clear();
+    _platformViewContexts.clear();
+    _primaryPlatformViewId = null;
+
+    // Clear overlay and fullscreen references
+    _overlayBuilder = null;
+    _dartFullscreenCloseCallback = null;
+
+    // Clear other state
     _methodChannel = null;
     _updateState(const NativeVideoPlayerState());
     _url = null;
-    _platformViewIds.clear();
-    _primaryPlatformViewId = null;
     _initializeCompleter = null;
-    _activityEventHandlers.clear();
-    _controlEventHandlers.clear();
   }
 }
