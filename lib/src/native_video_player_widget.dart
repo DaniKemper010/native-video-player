@@ -27,7 +27,11 @@ class NativeVideoPlayer extends StatefulWidget {
   /// Optional overlay widget builder that renders on top of the video player.
   /// The builder receives the BuildContext and controller to build custom controls.
   /// The overlay is displayed in both normal and fullscreen modes with fade animations.
-  final Widget Function(BuildContext context, NativeVideoPlayerController controller)? overlayBuilder;
+  final Widget Function(
+    BuildContext context,
+    NativeVideoPlayerController controller,
+  )?
+  overlayBuilder;
 
   /// Duration for overlay fade in/out animations.
   /// Defaults to 300ms.
@@ -37,7 +41,8 @@ class NativeVideoPlayer extends StatefulWidget {
   State<NativeVideoPlayer> createState() => _NativeVideoPlayerState();
 }
 
-class _NativeVideoPlayerState extends State<NativeVideoPlayer> with SingleTickerProviderStateMixin {
+class _NativeVideoPlayerState extends State<NativeVideoPlayer>
+    with SingleTickerProviderStateMixin {
   int? _platformViewId;
   late AnimationController _overlayAnimationController;
   late Animation<double> _overlayOpacity;
@@ -51,12 +56,17 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> with SingleTicker
     widget.controller.setOverlayBuilder(widget.overlayBuilder);
 
     // Set up animation controller for overlay fade
-    _overlayAnimationController = AnimationController(duration: widget.overlayFadeDuration, vsync: this);
+    _overlayAnimationController = AnimationController(
+      duration: widget.overlayFadeDuration,
+      vsync: this,
+    );
 
-    _overlayOpacity = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _overlayAnimationController, curve: Curves.easeInOut));
+    _overlayOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _overlayAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
 
     // Start with overlay visible if we have one
     if (widget.overlayBuilder != null) {
@@ -70,7 +80,8 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> with SingleTicker
 
   void _handleControlEvent(PlayerControlEvent event) {
     // Show overlay when exiting fullscreen
-    if (event.state == PlayerControlState.fullscreenExited && !_overlayVisible) {
+    if (event.state == PlayerControlState.fullscreenExited &&
+        !_overlayVisible) {
       setState(() {
         _overlayVisible = true;
         _overlayAnimationController.forward();
@@ -158,24 +169,30 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> with SingleTicker
           );
         },
         onCreatePlatformView: (params) {
-          final AndroidViewController controller = PlatformViewsService.initSurfaceAndroidView(
-            id: params.id,
-            viewType: viewType,
-            layoutDirection: TextDirection.ltr,
-            creationParams: widget.controller.creationParams,
-            creationParamsCodec: const StandardMessageCodec(),
-            onFocus: () {
-              params.onFocusChanged(true);
-            },
+          final AndroidViewController controller =
+              PlatformViewsService.initSurfaceAndroidView(
+                id: params.id,
+                viewType: viewType,
+                layoutDirection: TextDirection.ltr,
+                creationParams: widget.controller.creationParams,
+                creationParamsCodec: const StandardMessageCodec(),
+                onFocus: () {
+                  params.onFocusChanged(true);
+                },
+              );
+          controller.addOnPlatformViewCreatedListener(
+            params.onPlatformViewCreated,
           );
-          controller.addOnPlatformViewCreatedListener(params.onPlatformViewCreated);
           controller.addOnPlatformViewCreatedListener(_onPlatformViewCreated);
           return controller..create();
         },
       );
     }
 
-    return const Text('Only iOS and Android are supported', textAlign: TextAlign.center);
+    return const Text(
+      'Only iOS and Android are supported',
+      textAlign: TextAlign.center,
+    );
   }
 
   @override
@@ -204,7 +221,10 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer> with SingleTicker
         // Animated overlay
         FadeTransition(
           opacity: _overlayOpacity,
-          child: IgnorePointer(ignoring: !_overlayVisible, child: widget.overlayBuilder!(context, widget.controller)),
+          child: IgnorePointer(
+            ignoring: !_overlayVisible,
+            child: widget.overlayBuilder!(context, widget.controller),
+          ),
         ),
       ],
     );

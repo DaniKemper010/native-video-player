@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2025-10-23
+
+### Improved
+- **Android Media Info Management**: Refactored VideoPlayerNotificationHandler and VideoPlayerObserver for improved media information management
+  - Enhanced media session and notification updates to occur consistently when playback starts
+  - Improved user experience in both normal playback and Picture-in-Picture modes
+  - Cleaned up code for better readability and maintainability
+  - Enhanced logging for better debugging capabilities
+
 ## [0.2.4] - 2025-10-23
 
 ### Fixed

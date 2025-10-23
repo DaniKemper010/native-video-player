@@ -156,9 +156,10 @@ class VideoPlayerView(
         }
 
         // Create PlayerView and attach player
+        val showNativeControls = args?.get("showNativeControls") as? Boolean ?: true
         playerView = PlayerView(context).apply {
             this.player = this@VideoPlayerView.player
-            useController = args?.get("showNativeControls") as? Boolean ?: true
+            useController = showNativeControls
             controllerShowTimeoutMs = 5000
             controllerHideOnTouch = true
 
