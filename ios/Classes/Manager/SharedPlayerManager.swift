@@ -217,6 +217,7 @@ class SharedPlayerManager {
             }
             
             // Then enable ONLY the primary view (the one that most recently called play)
+            var enabledOnView = false
             if let primaryViewId = primaryViewIdForController[controllerId] {
                 let key = "\(primaryViewId)"
                 if let wrapper = videoPlayerViews[key], let view = wrapper.view {
@@ -226,6 +227,7 @@ class SharedPlayerManager {
                         let isAfter = view.playerViewController.canStartPictureInPictureAutomaticallyFromInline
                         print("   → ViewId \(view.viewId): \(wasBefore) → \(isAfter) [PRIMARY]")
                         print("   ✅ Enabled on PRIMARY platform view for controller \(controllerId)")
+                        enabledOnView = true
                     } else {
                         print("   ⚠️ Primary view doesn't allow automatic PiP")
                     }
@@ -234,6 +236,31 @@ class SharedPlayerManager {
                 }
             } else {
                 print("   ⚠️ No primary view set for controller \(controllerId)")
+            }
+
+            // FALLBACK: If no primary view was found or it was disposed, pick ANY view for this controller
+            // This handles the case where the primary view was disposed but other views still exist
+            if !enabledOnView {
+                print("   🔄 Looking for any available view for controller \(controllerId)")
+                for (viewKey, wrapper) in videoPlayerViews {
+                    if let view = wrapper.view, view.controllerId == controllerId {
+                        if view.canStartPictureInPictureAutomatically {
+                            let wasBefore = view.playerViewController.canStartPictureInPictureAutomaticallyFromInline
+                            view.playerViewController.canStartPictureInPictureAutomaticallyFromInline = true
+                            let isAfter = view.playerViewController.canStartPictureInPictureAutomaticallyFromInline
+                            print("   → ViewId \(view.viewId): \(wasBefore) → \(isAfter) [FALLBACK]")
+                            print("   ✅ Enabled on fallback platform view for controller \(controllerId)")
+                            // Set this as the new primary view
+                            primaryViewIdForController[controllerId] = view.viewId
+                            enabledOnView = true
+                            break
+                        }
+                    }
+                }
+
+                if !enabledOnView {
+                    print("   ⚠️ No available view found for controller \(controllerId) that allows automatic PiP")
+                }
             }
             
             controllerWithAutomaticPiP = controllerId

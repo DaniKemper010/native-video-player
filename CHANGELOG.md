@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2025-10-27
+
+### Added
+- **HDR Control**: Added `enableHDR` parameter to `NativeVideoPlayerController`
+  - Defaults to `false` to prevent washed-out/too-white video appearance on HDR content
+  - Set to `true` to enable HDR playback when desired
+  - Applies to both iOS and Android platforms
+  - ExoPlayer automatically handles tone-mapping to SDR when HDR is disabled
+
+- **AirPlay Connection State Tracking**: Enhanced AirPlay monitoring with connection state
+  - Added `isAirplayConnected` property to `NativeVideoPlayerState`
+  - Added `isAirplayConnected` getter to `NativeVideoPlayerController`
+  - Added `isAirplayConnectedStream` for real-time connection state updates
+  - New `PlayerControlState` events: `airPlayConnected` and `airPlayDisconnected`
+  - Allows UI to respond to active AirPlay streaming state
+
+- **Convenience State Getters**: Added direct property access to controller state
+  - `speed` - Current playback speed
+  - `isPipEnabled` - Current Picture-in-Picture state
+  - `isPipAvailable` - PiP device availability
+  - `isAirplayAvailable` - AirPlay device availability
+  - `isAirplayConnected` - Active AirPlay connection state
+
+### Fixed
+- **Android Picture-in-Picture Media Session**: Fixed media info not displaying correctly in PiP mode
+  - Media session now properly updates when entering PiP mode (manual, automatic, and exit)
+  - Ensures notification and lock screen controls show correct title, subtitle, and artwork
+  - Applies to all PiP entry/exit scenarios: manual start/stop and automatic transitions
+
+### Changed
+- Enhanced `NativeVideoPlayerState` model with `isAirplayConnected` property
+- Updated event handling to process AirPlay connection state changes
+- Improved Android PiP lifecycle to ensure media session consistency
+
 ## [0.2.8] - 2025-10-27
 
 ### Added

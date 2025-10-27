@@ -37,6 +37,7 @@ class NativeVideoPlayerController {
     this.allowsPictureInPicture = true,
     this.canStartPictureInPictureAutomatically = true,
     this.lockToLandscape = true,
+    this.enableHDR = false,
   });
 
   /// Initialize the controller and wait for the platform view to be created
@@ -73,6 +74,10 @@ class NativeVideoPlayerController {
 
   /// Whether PiP can start automatically when app goes to background (iOS 14.2+)
   final bool canStartPictureInPictureAutomatically;
+
+  /// Whether to enable HDR playback (default: false)
+  /// When set to false, HDR is disabled to prevent washed-out/too-white video appearance
+  final bool enableHDR;
 
   /// BuildContext getter for showing Dart fullscreen dialog
   /// Returns a mounted context from any registered platform view
@@ -167,6 +172,8 @@ class NativeVideoPlayerController {
       StreamController<bool>.broadcast();
   final StreamController<bool> _isAirplayAvailableController =
       StreamController<bool>.broadcast();
+  final StreamController<bool> _isAirplayConnectedController =
+      StreamController<bool>.broadcast();
   final StreamController<bool> _isFullscreenController =
       StreamController<bool>.broadcast();
   final StreamController<NativeVideoPlayerQuality> _qualityChangedController =
@@ -201,6 +208,9 @@ class NativeVideoPlayerController {
     }
     if (oldState.isAirplayAvailable != newState.isAirplayAvailable) {
       _isAirplayAvailableController.add(newState.isAirplayAvailable);
+    }
+    if (oldState.isAirplayConnected != newState.isAirplayConnected) {
+      _isAirplayConnectedController.add(newState.isAirplayConnected);
     }
     if (oldState.isFullScreen != newState.isFullScreen) {
       _isFullscreenController.add(newState.isFullScreen);
@@ -260,6 +270,21 @@ class NativeVideoPlayerController {
   /// Current player state
   NativeVideoPlayerState get state => _state;
 
+  /// Returns the current playback speed
+  double get speed => _state.speed;
+
+  /// Returns whether Picture-in-Picture mode is currently active
+  bool get isPipEnabled => _state.isPipEnabled;
+
+  /// Returns whether Picture-in-Picture is available on the device
+  bool get isPipAvailable => _state.isPipAvailable;
+
+  /// Returns whether AirPlay is available on the device
+  bool get isAirplayAvailable => _state.isAirplayAvailable;
+
+  /// Returns whether the video is currently connected to an AirPlay/Cast device
+  bool get isAirplayConnected => _state.isAirplayConnected;
+
   /// Stream of buffered position changes
   Stream<Duration> get bufferedPositionStream =>
       _bufferedPositionController.stream;
@@ -287,6 +312,10 @@ class NativeVideoPlayerController {
   Stream<bool> get isAirplayAvailableStream =>
       _isAirplayAvailableController.stream;
 
+  /// Stream of AirPlay connection state changes
+  Stream<bool> get isAirplayConnectedStream =>
+      _isAirplayConnectedController.stream;
+
   /// Stream of fullscreen state changes
   Stream<bool> get isFullscreenStream => _isFullscreenController.stream;
 
@@ -305,6 +334,7 @@ class NativeVideoPlayerController {
     'showNativeControls':
         !_hasCustomOverlay, // Hide native controls if we have custom overlay
     'isFullScreen': _state.isFullScreen,
+    'enableHDR': enableHDR,
     if (mediaInfo != null) 'mediaInfo': mediaInfo!.toMap(),
   };
 
@@ -494,6 +524,15 @@ class NativeVideoPlayerController {
                       controlEvent.data!['isAvailable'] as bool;
                   _updateState(_state.copyWith(isPipAvailable: isAvailable));
                 }
+              }
+
+              // Handle AirPlay connection state events
+              if (controlEvent.state == PlayerControlState.airPlayConnected ||
+                  controlEvent.state ==
+                      PlayerControlState.airPlayDisconnected) {
+                final bool isConnected =
+                    controlEvent.state == PlayerControlState.airPlayConnected;
+                _updateState(_state.copyWith(isAirplayConnected: isConnected));
               }
 
               // Update control state for other control events
@@ -1053,6 +1092,7 @@ class NativeVideoPlayerController {
     await _isPipEnabledController.close();
     await _isPipAvailableController.close();
     await _isAirplayAvailableController.close();
+    await _isAirplayConnectedController.close();
     await _isFullscreenController.close();
     await _qualityChangedController.close();
 

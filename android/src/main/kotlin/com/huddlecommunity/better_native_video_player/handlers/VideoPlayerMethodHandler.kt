@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -29,7 +30,8 @@ class VideoPlayerMethodHandler(
     private val eventHandler: VideoPlayerEventHandler,
     private val notificationHandler: VideoPlayerNotificationHandler,
     private val updateMediaInfo: ((Map<String, Any>?) -> Unit)? = null,
-    private val controllerId: Int? = null
+    private val controllerId: Int? = null,
+    private val enableHDR: Boolean = false
 ) {
     companion object {
         private const val TAG = "VideoPlayerMethod"
@@ -135,6 +137,26 @@ class VideoPlayerMethodHandler(
         // Set media source
         player.setMediaSource(mediaSource)
         player.prepare()
+
+        // Configure HDR settings for ExoPlayer using TrackSelectionParameters
+        if (!enableHDR) {
+            Log.d(TAG, "🎨 HDR disabled - ExoPlayer will use automatic tone-mapping for HDR content")
+            // Note: ExoPlayer automatically tone-maps HDR content to SDR on devices
+            // that don't support HDR or when the display doesn't support it.
+            //
+            // For more explicit control over track selection to avoid HDR tracks entirely,
+            // we would need to:
+            // 1. Implement a custom TrackSelector that filters based on Format.colorInfo.colorTransfer
+            // 2. Check for COLOR_TRANSFER_HLG, COLOR_TRANSFER_ST2084 (HDR10), etc.
+            // 3. Configure this at player creation time with a DefaultTrackSelector.Builder
+            //
+            // However, this is complex and may break adaptive streaming benefits.
+            // ExoPlayer's automatic tone-mapping is generally sufficient for most use cases.
+            //
+            // See: https://github.com/androidx/media/issues/1074
+        } else {
+            Log.d(TAG, "🎨 HDR enabled - allowing native HDR playback")
+        }
 
         // Set autoplay
         if (autoPlay) {

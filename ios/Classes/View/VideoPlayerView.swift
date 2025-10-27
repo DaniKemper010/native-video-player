@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import AVKit
 import AVFoundation
+import MediaPlayer
 import QuartzCore
 
 // MARK: - Main Video Player View
@@ -41,6 +42,9 @@ import QuartzCore
 
     // Store desired playback speed
     var desiredPlaybackSpeed: Float = 1.0
+
+    // Store HDR setting
+    var enableHDR: Bool = false
 
     public init(
         frame: CGRect,
@@ -99,6 +103,9 @@ import QuartzCore
             let argsAllowsPiP = args["allowsPictureInPicture"] as? Bool ?? true
             let argsCanStartAutomatically = args["canStartPictureInPictureAutomatically"] as? Bool ?? true
             let argsShowNativeControls = args["showNativeControls"] as? Bool ?? true
+
+            // HDR configuration from args
+            enableHDR = args["enableHDR"] as? Bool ?? false
 
             // For shared players, try to get PiP settings from SharedPlayerManager
             // This ensures PiP settings persist across all views using the same controller
@@ -327,9 +334,35 @@ import QuartzCore
 
     deinit {
         print("VideoPlayerView deinit for channel: \(channelName), viewId: \(viewId)")
-        
-        // Unregister this view from SharedPlayerManager
-        SharedPlayerManager.shared.unregisterVideoPlayerView(viewId: viewId)
+
+        // Handle automatic PiP transfer for shared players
+        // If this was the primary view (the one with automatic PiP enabled), we need to
+        // transfer automatic PiP to another view using the same controller
+        if #available(iOS 14.2, *), let controllerIdValue = controllerId {
+            let wasPrimaryView = SharedPlayerManager.shared.isPrimaryView(viewId, for: controllerIdValue)
+            let wasAutoEnabled = SharedPlayerManager.shared.isControllerActiveForAutoPiP(controllerIdValue)
+
+            if wasPrimaryView && wasAutoEnabled {
+                print("🎬 Primary view being disposed - transferring automatic PiP to another view")
+
+                // Disable automatic PiP on this view before unregistering
+                playerViewController.canStartPictureInPictureAutomaticallyFromInline = false
+
+                // Unregister this view first so it won't be found
+                SharedPlayerManager.shared.unregisterVideoPlayerView(viewId: viewId)
+
+                // Re-enable automatic PiP - this will find and enable a different view
+                // for the same controller (if any exists)
+                SharedPlayerManager.shared.setAutomaticPiPEnabled(for: controllerIdValue, enabled: true)
+                print("✅ Automatic PiP transferred to another view for controller \(controllerIdValue)")
+            } else {
+                // Normal unregister for non-primary views
+                SharedPlayerManager.shared.unregisterVideoPlayerView(viewId: viewId)
+            }
+        } else {
+            // Normal unregister for non-shared players
+            SharedPlayerManager.shared.unregisterVideoPlayerView(viewId: viewId)
+        }
 
         // Remove periodic time observer
         if let timeObserver = timeObserver {
@@ -360,6 +393,18 @@ import QuartzCore
 
         NotificationCenter.default.removeObserver(self)
         methodChannel.setMethodCallHandler(nil)
+
+        // Clear Now Playing info if this player owns it
+        // Only clear if we're a non-shared player to avoid clearing another player's info
+        if controllerId == nil {
+            print("🗑️ Clearing Now Playing info for non-shared player")
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        } else {
+            print("📱 Keeping Now Playing info for shared player (controller ID: \(String(describing: controllerId)))")
+        }
+
+        // Clear current media info
+        currentMediaInfo = nil
 
         // Note: player and playerViewController are NOT disposed here
         // They remain in SharedPlayerManager for reuse

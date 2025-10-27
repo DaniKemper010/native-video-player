@@ -41,6 +41,7 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> {
         mediaInfo: NativeVideoPlayerMediaInfo(
           title: widget.video.title,
           subtitle: widget.video.description,
+          artworkUrl: widget.video.artworkUrl,
         ),
       );
 

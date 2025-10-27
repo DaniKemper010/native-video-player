@@ -23,6 +23,8 @@ enum PlayerControlState {
   pipStopped,
   pipAvailabilityChanged,
   airPlayAvailabilityChanged,
+  airPlayConnected,
+  airPlayDisconnected,
   fullscreenEntered,
   fullscreenExited,
   timeUpdated,
@@ -107,6 +109,12 @@ class PlayerControlEvent {
         return PlayerControlState.pipAvailabilityChanged;
       case 'airPlayAvailabilityChanged':
         return PlayerControlState.airPlayAvailabilityChanged;
+      case 'airPlayConnectionChanged':
+        // Check if connected or disconnected from data
+        final bool isConnected = map['isConnected'] as bool? ?? false;
+        return isConnected
+            ? PlayerControlState.airPlayConnected
+            : PlayerControlState.airPlayDisconnected;
       case 'fullscreenChange':
         // Check if entering or exiting fullscreen from data
         final bool isFullscreen = map['isFullscreen'] as bool? ?? true;

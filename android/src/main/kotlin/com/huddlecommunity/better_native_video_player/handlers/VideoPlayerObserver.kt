@@ -28,6 +28,9 @@ class VideoPlayerObserver(
     // Track if we've already sent a buffering event to avoid duplicates
     private var hasReportedBuffering = false
 
+    // Track Cast/external playback connection state
+    private var wasExternalPlaybackActive = false
+
     private val handler = Handler(Looper.getMainLooper())
     private val timeUpdateRunnable = object : Runnable {
         override fun run() {
@@ -156,5 +159,20 @@ class VideoPlayerObserver(
             "error",
             mapOf("message" to (error.message ?: "Unknown error"))
         )
+    }
+
+    override fun onDeviceInfoChanged(deviceInfo: androidx.media3.common.DeviceInfo) {
+        // Check if playing to a remote device (Cast)
+        val isExternalPlaybackActive = deviceInfo.playbackType == androidx.media3.common.DeviceInfo.PLAYBACK_TYPE_REMOTE
+
+        // Only send event if the state changed
+        if (isExternalPlaybackActive != wasExternalPlaybackActive) {
+            wasExternalPlaybackActive = isExternalPlaybackActive
+            Log.d(TAG, "Cast/external playback changed: $isExternalPlaybackActive")
+            eventHandler.sendEvent(
+                "airPlayConnectionChanged",
+                mapOf("isConnected" to isExternalPlaybackActive)
+            )
+        }
     }
 }

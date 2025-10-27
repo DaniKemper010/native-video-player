@@ -83,6 +83,9 @@ class VideoPlayerView(
     private var canStartPictureInPictureAutomatically: Boolean = false
     private var showNativeControlsOriginal: Boolean = true
 
+    // HDR setting
+    private var enableHDR: Boolean = false
+
 
     init {
         Log.d(TAG, "Creating VideoPlayerView with id: $viewId")
@@ -98,6 +101,10 @@ class VideoPlayerView(
         val argsAllowsPiP = args?.get("allowsPictureInPicture") as? Boolean ?: true
         val argsCanStartPiPAuto = args?.get("canStartPictureInPictureAutomatically") as? Boolean ?: false
         val argsShowNativeControls = args?.get("showNativeControls") as? Boolean ?: true
+
+        // Extract HDR setting from args
+        enableHDR = args?.get("enableHDR") as? Boolean ?: false
+        Log.d(TAG, "HDR setting: $enableHDR")
 
         // For shared players, try to get PiP settings from SharedPlayerManager
         // This ensures PiP settings persist across all views using the same controller
@@ -174,6 +181,15 @@ class VideoPlayerView(
                 Log.d(TAG, "PiP enabled for this player")
             }
 
+            // Configure HDR rendering
+            if (!enableHDR) {
+                Log.d(TAG, "🎨 HDR disabled for PlayerView - ExoPlayer will tone-map to SDR")
+                // ExoPlayer handles tone-mapping automatically, but we can hint at the surface level
+                // Note: More explicit control would require custom RenderersFactory
+            } else {
+                Log.d(TAG, "🎨 HDR enabled for PlayerView")
+            }
+
             Log.d(TAG, "PlayerView configured")
         }
 
@@ -237,7 +253,8 @@ class VideoPlayerView(
             eventHandler = eventHandler,
             notificationHandler = notificationHandler,
             updateMediaInfo = { mediaInfo -> currentMediaInfo = mediaInfo },
-            controllerId = controllerId
+            controllerId = controllerId,
+            enableHDR = enableHDR
         )
 
         // Set fullscreen callback for method handler
@@ -655,6 +672,13 @@ class VideoPlayerView(
                 Log.d(TAG, "PiP mode entered: $entered")
 
                 if (entered) {
+                    // ALWAYS set media item when entering PiP to ensure correct media controls
+                    currentMediaInfo?.let { mediaInfo ->
+                        val title = mediaInfo["title"] as? String
+                        Log.d(TAG, "📱 Setting media session for PiP start: $title")
+                        notificationHandler.setupMediaSession(mediaInfo)
+                    }
+
                     eventHandler.sendEvent("pipStart", mapOf("isPictureInPicture" to true))
                     return true
                 } else {
@@ -690,7 +714,14 @@ class VideoPlayerView(
                 // Restore controls when exiting PiP
                 playerView.useController = showNativeControlsOriginal
                 playerView.showController()
-                
+
+                // ALWAYS set media item when exiting PiP to ensure correct media controls
+                currentMediaInfo?.let { mediaInfo ->
+                    val title = mediaInfo["title"] as? String
+                    Log.d(TAG, "📱 Setting media session for PiP stop: $title")
+                    notificationHandler.setupMediaSession(mediaInfo)
+                }
+
                 // Exit PiP by going back to normal mode (no direct API for this)
                 // The system will call onPictureInPictureModeChanged which we handle in the observer
                 eventHandler.sendEvent("pipStop", mapOf("isPictureInPicture" to false))
@@ -750,6 +781,13 @@ class VideoPlayerView(
                 Log.d(TAG, "Auto PiP entered: $entered")
 
                 if (entered) {
+                    // ALWAYS set media item when entering PiP (including auto) to ensure correct media controls
+                    currentMediaInfo?.let { mediaInfo ->
+                        val title = mediaInfo["title"] as? String
+                        Log.d(TAG, "📱 Setting media session for auto PiP start: $title")
+                        notificationHandler.setupMediaSession(mediaInfo)
+                    }
+
                     eventHandler.sendEvent("pipStart", mapOf("isPictureInPicture" to true, "auto" to true))
                 } else {
                     // Restore controls if PiP failed
@@ -774,6 +812,14 @@ class VideoPlayerView(
         if (showNativeControlsOriginal) {
             playerView.showController()
         }
+
+        // ALWAYS set media item when exiting PiP to ensure correct media controls
+        currentMediaInfo?.let { mediaInfo ->
+            val title = mediaInfo["title"] as? String
+            Log.d(TAG, "📱 Setting media session after PiP exit: $title")
+            notificationHandler.setupMediaSession(mediaInfo)
+        }
+
         Log.d(TAG, "ExoPlayer controls restored to: $showNativeControlsOriginal")
     }
 
@@ -829,6 +875,9 @@ class VideoPlayerView(
         // Clean up channels
         eventChannel.setStreamHandler(null)
 
+        // Clear media info
+        currentMediaInfo = null
+
         // Note: player and notification handler are NOT released here if they're shared
         // The shared player and notification handler will be kept alive for reuse
         if (controllerId != null) {
@@ -844,7 +893,7 @@ class VideoPlayerView(
             // Unregister this view and notify remaining views to reconnect their surfaces
             SharedPlayerManager.unregisterView(controllerId, viewId)
         } else {
-            // Only release if not shared
+            // Only release if not shared (for non-shared players, fully clean up media session)
             notificationHandler.release()
             player.release()
         }

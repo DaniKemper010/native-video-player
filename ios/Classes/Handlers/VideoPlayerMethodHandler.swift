@@ -67,7 +67,40 @@ extension VideoPlayerView {
             let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
             playerItem = AVPlayerItem(asset: asset)
         } else {
-            playerItem = AVPlayerItem(url: url)
+            let asset = AVURLAsset(url: url)
+            playerItem = AVPlayerItem(asset: asset)
+        }
+
+        // --- Configure HDR settings ---
+        // Disable HDR if enableHDR is false to prevent washed-out video appearance
+        if !self.enableHDR {
+            print("🎨 HDR disabled - forcing SDR color space via videoComposition")
+            // Create a video composition that forces SDR color space (Rec.709)
+            // This prevents HDR content from appearing washed-out on non-HDR displays
+            // by forcing the video to use standard dynamic range color properties
+            if let asset = playerItem.asset as? AVURLAsset {
+                // Get the first video track to determine the natural size
+                let videoTracks = asset.tracks(withMediaType: .video)
+                if let videoTrack = videoTracks.first {
+                    let videoComposition = AVMutableVideoComposition(propertiesOf: asset)
+
+                    // Ensure renderSize is set (required for videoComposition)
+                    if videoComposition.renderSize.width <= 0 || videoComposition.renderSize.height <= 0 {
+                        videoComposition.renderSize = videoTrack.naturalSize
+                    }
+
+                    // Use Rec.709 color space for HD SDR content
+                    videoComposition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+                    videoComposition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+                    videoComposition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+                    playerItem.videoComposition = videoComposition
+                    print("✅ Applied SDR color space (Rec.709) to video composition with size: \(videoComposition.renderSize)")
+                } else {
+                    print("⚠️ No video track found, skipping video composition")
+                }
+            }
+        } else {
+            print("🎨 HDR enabled - allowing native HDR playback")
         }
 
         player?.replaceCurrentItem(with: playerItem)

@@ -86,8 +86,9 @@ class FullscreenManager {
       return null;
     }
 
-    // Show the dialog
-    final result = await Navigator.of(context).push<T>(
+    // Show the dialog using the root navigator to avoid nested navigator issues
+    // rootNavigator: true ensures we use the topmost Navigator in the widget tree
+    final result = await Navigator.of(context, rootNavigator: true).push<T>(
       PageRouteBuilder<T>(
         opaque: true,
         barrierColor: Colors.black,
