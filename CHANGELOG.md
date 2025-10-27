@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2025-10-27
+
+### Added
+- **Individual Property Streams**: Added dedicated broadcast streams for convenient property monitoring
+  - `bufferedPositionStream` - Stream of buffered position changes
+  - `durationStream` - Stream of duration changes
+  - `playerStateStream` - Stream of player state changes (playing, paused, buffering, etc.)
+  - `positionStream` - Stream of playback position changes
+  - `speedStream` - Stream of playback speed changes
+  - `isPipEnabledStream` - Stream of Picture-in-Picture state changes
+  - `isPipAvailableStream` - Stream of Picture-in-Picture availability changes
+  - `isAirplayAvailableStream` - Stream of AirPlay availability changes
+  - `isFullscreenStream` - Stream of fullscreen state changes
+  - `qualityChangedStream` - Stream of quality changes
+  - Streams only emit when values actually change (no duplicate emissions)
+  - All streams are broadcast streams allowing multiple listeners
+
+- **Toggle Picture-in-Picture**: Added `togglePictureInPicture()` method for easy PiP toggling
+  - Automatically checks current PiP state and enters/exits accordingly
+  - Returns `bool` indicating success/failure of the operation
+  - Follows the same pattern as `toggleFullScreen()` for consistency
+
+### Changed
+- **Enhanced State Model**: Extended `NativeVideoPlayerState` with new properties
+  - Added `speed` property to track playback speed
+  - Added `isPipEnabled` property to track current PiP state
+  - Added `isPipAvailable` property to track PiP device availability
+  - Added `isAirplayAvailable` property to track AirPlay device availability
+  - Updated `copyWith()`, `operator==`, and `hashCode` to include new properties
+
+- **Improved Event Handling**: Enhanced event processing to update state properties
+  - Quality changes now update state and emit to quality stream
+  - Speed changes now update state and emit to speed stream
+  - PiP state changes (both platform view and MainActivity events) now update state and emit to PiP streams
+  - PiP availability changes now update state and emit to availability stream
+  - AirPlay availability changes now update state and emit to AirPlay stream
+
+### Documentation
+- Added comprehensive documentation for individual property streams in README
+- Added usage examples showing how to use streams vs event listeners
+- Updated API Reference section with new streams and toggle method
+- Added dedicated Streams subsection in API Reference documenting all 10 available streams
+- Updated Picture-in-Picture section with `togglePictureInPicture()` usage examples
+
+### Note
+- The original event listeners (`addActivityListener`, `addControlListener`) continue to work as before
+- Users can choose between using dedicated streams or event listeners based on their use case
+- Stream controllers are properly disposed in the `dispose()` method to prevent memory leaks
+
 ## [0.2.7] - 2025-10-23
 
 ### Improved

@@ -150,8 +150,62 @@ class NativeVideoPlayerController {
   final List<void Function(PlayerControlEvent)> _controlEventHandlers =
       <void Function(PlayerControlEvent)>[];
 
+  /// Stream controllers for individual property streams
+  final StreamController<Duration> _bufferedPositionController =
+      StreamController<Duration>.broadcast();
+  final StreamController<Duration> _durationController =
+      StreamController<Duration>.broadcast();
+  final StreamController<PlayerActivityState> _playerStateController =
+      StreamController<PlayerActivityState>.broadcast();
+  final StreamController<Duration> _positionController =
+      StreamController<Duration>.broadcast();
+  final StreamController<double> _speedController =
+      StreamController<double>.broadcast();
+  final StreamController<bool> _isPipEnabledController =
+      StreamController<bool>.broadcast();
+  final StreamController<bool> _isPipAvailableController =
+      StreamController<bool>.broadcast();
+  final StreamController<bool> _isAirplayAvailableController =
+      StreamController<bool>.broadcast();
+  final StreamController<bool> _isFullscreenController =
+      StreamController<bool>.broadcast();
+  final StreamController<NativeVideoPlayerQuality> _qualityChangedController =
+      StreamController<NativeVideoPlayerQuality>.broadcast();
+
   /// Updates the internal state
-  void _updateState(NativeVideoPlayerState newState) => _state = newState;
+  void _updateState(NativeVideoPlayerState newState) {
+    final oldState = _state;
+    _state = newState;
+
+    // Emit to individual streams when values change
+    if (oldState.bufferedPosition != newState.bufferedPosition) {
+      _bufferedPositionController.add(newState.bufferedPosition);
+    }
+    if (oldState.duration != newState.duration) {
+      _durationController.add(newState.duration);
+    }
+    if (oldState.activityState != newState.activityState) {
+      _playerStateController.add(newState.activityState);
+    }
+    if (oldState.currentPosition != newState.currentPosition) {
+      _positionController.add(newState.currentPosition);
+    }
+    if (oldState.speed != newState.speed) {
+      _speedController.add(newState.speed);
+    }
+    if (oldState.isPipEnabled != newState.isPipEnabled) {
+      _isPipEnabledController.add(newState.isPipEnabled);
+    }
+    if (oldState.isPipAvailable != newState.isPipAvailable) {
+      _isPipAvailableController.add(newState.isPipAvailable);
+    }
+    if (oldState.isAirplayAvailable != newState.isAirplayAvailable) {
+      _isAirplayAvailableController.add(newState.isAirplayAvailable);
+    }
+    if (oldState.isFullScreen != newState.isFullScreen) {
+      _isFullscreenController.add(newState.isFullScreen);
+    }
+  }
 
   /// Adds a listener for activity events (play, pause, buffering, etc.)
   void addActivityListener(void Function(PlayerActivityEvent) listener) {
@@ -205,6 +259,40 @@ class NativeVideoPlayerController {
 
   /// Current player state
   NativeVideoPlayerState get state => _state;
+
+  /// Stream of buffered position changes
+  Stream<Duration> get bufferedPositionStream =>
+      _bufferedPositionController.stream;
+
+  /// Stream of duration changes
+  Stream<Duration> get durationStream => _durationController.stream;
+
+  /// Stream of player state changes (playing, paused, buffering, etc.)
+  Stream<PlayerActivityState> get playerStateStream =>
+      _playerStateController.stream;
+
+  /// Stream of position changes
+  Stream<Duration> get positionStream => _positionController.stream;
+
+  /// Stream of playback speed changes
+  Stream<double> get speedStream => _speedController.stream;
+
+  /// Stream of Picture-in-Picture enabled state changes
+  Stream<bool> get isPipEnabledStream => _isPipEnabledController.stream;
+
+  /// Stream of Picture-in-Picture availability changes
+  Stream<bool> get isPipAvailableStream => _isPipAvailableController.stream;
+
+  /// Stream of AirPlay availability changes
+  Stream<bool> get isAirplayAvailableStream =>
+      _isAirplayAvailableController.stream;
+
+  /// Stream of fullscreen state changes
+  Stream<bool> get isFullscreenStream => _isFullscreenController.stream;
+
+  /// Stream of quality changes
+  Stream<NativeVideoPlayerQuality> get qualityChangedStream =>
+      _qualityChangedController.stream;
 
   /// Parameters passed to native side when creating the platform view
   /// Includes controller ID, autoPlay, PiP settings, media info, and fullscreen state
@@ -279,6 +367,7 @@ class NativeVideoPlayerController {
             // Handle AirPlay availability change event
             if (eventName == 'airPlayAvailabilityChanged') {
               final bool isAvailable = map['isAvailable'] as bool? ?? false;
+              _updateState(_state.copyWith(isAirplayAvailable: isAvailable));
               for (final handler in _airPlayAvailabilityHandlers) {
                 handler(isAvailable);
               }
@@ -366,8 +455,49 @@ class NativeVideoPlayerController {
                     ),
                   );
                 }
-              } else {
-                // Update control state for other control events
+              }
+
+              // Handle quality change events
+              if (controlEvent.state == PlayerControlState.qualityChanged) {
+                if (controlEvent.data != null &&
+                    controlEvent.data!['quality'] != null) {
+                  final qualityMap = controlEvent.data!['quality'] as Map;
+                  final quality = NativeVideoPlayerQuality.fromMap(qualityMap);
+                  _qualityChangedController.add(quality);
+                }
+              }
+
+              // Handle speed change events
+              if (controlEvent.state == PlayerControlState.speedChanged) {
+                if (controlEvent.data != null &&
+                    controlEvent.data!['speed'] != null) {
+                  final double speed = (controlEvent.data!['speed'] as num)
+                      .toDouble();
+                  _updateState(_state.copyWith(speed: speed));
+                }
+              }
+
+              // Handle PiP state events
+              if (controlEvent.state == PlayerControlState.pipStarted ||
+                  controlEvent.state == PlayerControlState.pipStopped) {
+                final bool isPipEnabled =
+                    controlEvent.state == PlayerControlState.pipStarted;
+                _updateState(_state.copyWith(isPipEnabled: isPipEnabled));
+              }
+
+              // Handle PiP availability change events
+              if (controlEvent.state ==
+                  PlayerControlState.pipAvailabilityChanged) {
+                if (controlEvent.data != null &&
+                    controlEvent.data!['isAvailable'] != null) {
+                  final bool isAvailable =
+                      controlEvent.data!['isAvailable'] as bool;
+                  _updateState(_state.copyWith(isPipAvailable: isAvailable));
+                }
+              }
+
+              // Update control state for other control events
+              if (controlEvent.state != PlayerControlState.timeUpdated) {
                 _updateState(_state.copyWith(controlState: controlEvent.state));
               }
 
@@ -439,7 +569,10 @@ class NativeVideoPlayerController {
           );
 
           // Update controller state
-          _updateState(_state.copyWith(controlState: state));
+          final bool isPipEnabled = state == PlayerControlState.pipStarted;
+          _updateState(
+            _state.copyWith(controlState: state, isPipEnabled: isPipEnabled),
+          );
 
           // Notify all control listeners
           for (final handler in _controlEventHandlers) {
@@ -654,6 +787,17 @@ class NativeVideoPlayerController {
     return await _methodChannel!.exitPictureInPicture();
   }
 
+  /// Toggles Picture-in-Picture mode
+  /// Only works on iOS 14+ and Android 8+
+  /// Returns true if the operation was successful
+  Future<bool> togglePictureInPicture() async {
+    if (_state.isPipEnabled) {
+      return await exitPictureInPicture();
+    } else {
+      return await enterPictureInPicture();
+    }
+  }
+
   /// Enters fullscreen mode
   /// Uses Dart fullscreen if custom overlay is present, otherwise uses native fullscreen
   Future<void> enterFullScreen() async {
@@ -848,6 +992,7 @@ class NativeVideoPlayerController {
 
     // Note: We do NOT clear _state and _url so we can resume playback
     // Note: We do NOT call _methodChannel.dispose() to keep native player alive
+    // Note: We do NOT close stream controllers so they can continue to be used
   }
 
   /// Fully disposes of all resources including the native player
@@ -898,6 +1043,18 @@ class NativeVideoPlayerController {
     _controlEventHandlers.clear();
     _airPlayAvailabilityHandlers.clear();
     _airPlayConnectionHandlers.clear();
+
+    // Close all stream controllers
+    await _bufferedPositionController.close();
+    await _durationController.close();
+    await _playerStateController.close();
+    await _positionController.close();
+    await _speedController.close();
+    await _isPipEnabledController.close();
+    await _isPipAvailableController.close();
+    await _isAirplayAvailableController.close();
+    await _isFullscreenController.close();
+    await _qualityChangedController.close();
 
     // Clear platform view references
     _platformViewIds.clear();

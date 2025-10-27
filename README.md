@@ -17,6 +17,7 @@ A Flutter plugin for native video playback on iOS and Android with advanced feat
 - ✅ Playback controls: play, pause, seek, volume, speed (0.25x - 2.0x)
 - ✅ Quality selection for HLS streams with real-time switching
 - ✅ **Separated event streams**: Activity events (play/pause/buffering) and Control events (quality/speed/PiP/fullscreen)
+- ✅ **Individual property streams**: Dedicated streams for position, duration, speed, state, fullscreen, PiP, AirPlay, and quality
 - ✅ Real-time playback position tracking with **buffered position indicator**
 - ✅ Custom HTTP headers support for video requests
 - ✅ Multiple controller instances support with shared player management
@@ -428,6 +429,63 @@ void dispose() {
 }
 ```
 
+#### Individual Property Streams
+
+For convenience, the controller also provides dedicated streams for individual properties. These are useful when you only need to listen to specific changes:
+
+```dart
+@override
+void initState() {
+  super.initState();
+
+  // Listen to position changes
+  _controller.positionStream.listen((position) {
+    print('Position: ${position.inSeconds}s');
+  });
+
+  // Listen to player state changes
+  _controller.playerStateStream.listen((state) {
+    if (state == PlayerActivityState.playing) {
+      print('Video is playing');
+    }
+  });
+
+  // Listen to fullscreen state changes
+  _controller.isFullscreenStream.listen((isFullscreen) {
+    print('Fullscreen: $isFullscreen');
+  });
+
+  // Listen to PiP state changes
+  _controller.isPipEnabledStream.listen((isPipEnabled) {
+    print('PiP enabled: $isPipEnabled');
+  });
+
+  // Listen to speed changes
+  _controller.speedStream.listen((speed) {
+    print('Playback speed: ${speed}x');
+  });
+
+  // Listen to quality changes
+  _controller.qualityChangedStream.listen((quality) {
+    print('Quality: ${quality.name}');
+  });
+}
+```
+
+**Available streams:**
+- `bufferedPositionStream` - Stream of buffered position changes
+- `durationStream` - Stream of duration changes
+- `playerStateStream` - Stream of player state changes (playing, paused, buffering, etc.)
+- `positionStream` - Stream of playback position changes
+- `speedStream` - Stream of playback speed changes
+- `isPipEnabledStream` - Stream of Picture-in-Picture state changes
+- `isPipAvailableStream` - Stream of Picture-in-Picture availability changes
+- `isAirplayAvailableStream` - Stream of AirPlay availability changes
+- `isFullscreenStream` - Stream of fullscreen state changes
+- `qualityChangedStream` - Stream of quality changes
+
+**Note:** The original event listeners (`addActivityListener`, `addControlListener`) are still available and continue to work as before. Use whichever approach best fits your use case.
+
 #### Custom HTTP Headers
 
 ```dart
@@ -452,15 +510,23 @@ if (isPipAvailable) {
 
   // Exit PiP mode
   await _controller.exitPictureInPicture();
+
+  // Or toggle PiP mode
+  await _controller.togglePictureInPicture();
 }
 
-// Listen for PiP state changes
+// Listen for PiP state changes using the event listener
 _controller.addControlListener((event) {
   if (event.state == PlayerControlState.pipStarted) {
     print('Entered PiP mode');
   } else if (event.state == PlayerControlState.pipStopped) {
     print('Exited PiP mode');
   }
+});
+
+// Or listen using the dedicated stream
+_controller.isPipEnabledStream.listen((isPipEnabled) {
+  print('PiP enabled: $isPipEnabled');
 });
 ```
 
@@ -748,6 +814,7 @@ NativeVideoPlayer(
 - `Future<bool> isPictureInPictureAvailable()` - Check if PiP is available on device
 - `Future<bool> enterPictureInPicture()` - Enter Picture-in-Picture mode
 - `Future<bool> exitPictureInPicture()` - Exit Picture-in-Picture mode
+- `Future<bool> togglePictureInPicture()` - Toggle Picture-in-Picture mode
 - `Future<void> enterFullScreen()` - Enter fullscreen
 - `Future<void> exitFullScreen()` - Exit fullscreen
 - `Future<void> toggleFullScreen()` - Toggle fullscreen
@@ -775,6 +842,19 @@ NativeVideoPlayer(
 - `PlayerActivityState activityState` - Current activity state
 - `PlayerControlState controlState` - Current control state
 - `String? url` - Current video URL
+
+#### Streams
+
+- `Stream<Duration> bufferedPositionStream` - Stream of buffered position changes
+- `Stream<Duration> durationStream` - Stream of duration changes
+- `Stream<PlayerActivityState> playerStateStream` - Stream of player state changes
+- `Stream<Duration> positionStream` - Stream of playback position changes
+- `Stream<double> speedStream` - Stream of playback speed changes
+- `Stream<bool> isPipEnabledStream` - Stream of PiP state changes
+- `Stream<bool> isPipAvailableStream` - Stream of PiP availability changes
+- `Stream<bool> isAirplayAvailableStream` - Stream of AirPlay availability changes
+- `Stream<bool> isFullscreenStream` - Stream of fullscreen state changes
+- `Stream<NativeVideoPlayerQuality> qualityChangedStream` - Stream of quality changes
 
 ### Activity Event States
 

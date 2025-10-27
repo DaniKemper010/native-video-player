@@ -9,9 +9,13 @@ class NativeVideoPlayerState {
     this.duration = Duration.zero,
     this.bufferedPosition = Duration.zero,
     this.volume = 1.0,
+    this.speed = 1.0,
     this.qualities = const <NativeVideoPlayerQuality>[],
     this.activityState = PlayerActivityState.idle,
     this.controlState = PlayerControlState.none,
+    this.isPipEnabled = false,
+    this.isPipAvailable = false,
+    this.isAirplayAvailable = false,
   });
 
   /// Whether the video is currently in fullscreen mode
@@ -29,6 +33,9 @@ class NativeVideoPlayerState {
   /// Current volume (0.0 to 1.0)
   final double volume;
 
+  /// Current playback speed
+  final double speed;
+
   /// Available video qualities (HLS variants)
   final List<NativeVideoPlayerQuality> qualities;
 
@@ -38,6 +45,15 @@ class NativeVideoPlayerState {
   /// Current control state (quality change, speed change, pip, fullscreen, etc.)
   final PlayerControlState controlState;
 
+  /// Whether Picture-in-Picture mode is currently active
+  final bool isPipEnabled;
+
+  /// Whether Picture-in-Picture is available on the device
+  final bool isPipAvailable;
+
+  /// Whether AirPlay is available on the device
+  final bool isAirplayAvailable;
+
   /// Creates a copy of this state with the given fields replaced with new values
   NativeVideoPlayerState copyWith({
     bool? isFullScreen,
@@ -45,9 +61,13 @@ class NativeVideoPlayerState {
     Duration? duration,
     Duration? bufferedPosition,
     double? volume,
+    double? speed,
     List<NativeVideoPlayerQuality>? qualities,
     PlayerActivityState? activityState,
     PlayerControlState? controlState,
+    bool? isPipEnabled,
+    bool? isPipAvailable,
+    bool? isAirplayAvailable,
   }) {
     return NativeVideoPlayerState(
       isFullScreen: isFullScreen ?? this.isFullScreen,
@@ -55,9 +75,13 @@ class NativeVideoPlayerState {
       duration: duration ?? this.duration,
       bufferedPosition: bufferedPosition ?? this.bufferedPosition,
       volume: volume ?? this.volume,
+      speed: speed ?? this.speed,
       qualities: qualities ?? this.qualities,
       activityState: activityState ?? this.activityState,
       controlState: controlState ?? this.controlState,
+      isPipEnabled: isPipEnabled ?? this.isPipEnabled,
+      isPipAvailable: isPipAvailable ?? this.isPipAvailable,
+      isAirplayAvailable: isAirplayAvailable ?? this.isAirplayAvailable,
     );
   }
 
@@ -71,9 +95,13 @@ class NativeVideoPlayerState {
         other.duration == duration &&
         other.bufferedPosition == bufferedPosition &&
         other.volume == volume &&
+        other.speed == speed &&
         other.qualities == qualities &&
         other.activityState == activityState &&
-        other.controlState == controlState;
+        other.controlState == controlState &&
+        other.isPipEnabled == isPipEnabled &&
+        other.isPipAvailable == isPipAvailable &&
+        other.isAirplayAvailable == isAirplayAvailable;
   }
 
   @override
@@ -84,9 +112,13 @@ class NativeVideoPlayerState {
       duration,
       bufferedPosition,
       volume,
+      speed,
       qualities,
       activityState,
       controlState,
+      isPipEnabled,
+      isPipAvailable,
+      isAirplayAvailable,
     );
   }
 }
