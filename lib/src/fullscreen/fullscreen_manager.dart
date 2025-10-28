@@ -5,34 +5,52 @@ import '../platform/platform_utils.dart';
 
 /// Manages fullscreen state, system UI visibility, and device orientation
 class FullscreenManager {
+  /// Stores the current orientation preferences (tracked globally)
+  static List<DeviceOrientation> _currentOrientations = [
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ];
+
+  /// Stores the orientation preferences before entering fullscreen
+  static List<DeviceOrientation>? _savedOrientations;
+
   /// Enters fullscreen mode
   ///
   /// This method:
+  /// - Saves current orientation preferences automatically
   /// - Hides system UI (status bar, navigation bar on Android)
   /// - Allows all orientations (or locks to landscape if specified)
   ///
   /// **Parameters:**
   /// - lockToLandscape: If true, locks orientation to landscape modes only
   static Future<void> enterFullscreen({bool lockToLandscape = true}) async {
+    // Save current orientation preferences before changing them
+    _savedOrientations = List.from(_currentOrientations);
     // Hide system UI
     await SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.immersiveSticky,
       overlays: [],
     );
 
-    // Set orientation preferences
+    // Set orientation preferences for fullscreen
     if (lockToLandscape) {
-      await SystemChrome.setPreferredOrientations([
+      final landscapeOrientations = [
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
-      ]);
+      ];
+      await SystemChrome.setPreferredOrientations(landscapeOrientations);
+      _currentOrientations = landscapeOrientations;
     } else {
-      await SystemChrome.setPreferredOrientations([
+      final allOrientations = [
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
         DeviceOrientation.portraitUp,
         DeviceOrientation.portraitDown,
-      ]);
+      ];
+      await SystemChrome.setPreferredOrientations(allOrientations);
+      _currentOrientations = allOrientations;
     }
   }
 
@@ -40,7 +58,7 @@ class FullscreenManager {
   ///
   /// This method:
   /// - Restores system UI visibility
-  /// - Restores original orientation preferences
+  /// - Restores original orientation preferences that were saved before entering fullscreen
   static Future<void> exitFullscreen() async {
     // Restore system UI
     await SystemChrome.setEnabledSystemUIMode(
@@ -48,16 +66,38 @@ class FullscreenManager {
       overlays: SystemUiOverlay.values,
     );
 
-    // Restore orientation preferences
-    // Default to all orientations or portrait up
+    // Restore orientation preferences to what they were before fullscreen
     if (PlatformUtils.isAndroid || PlatformUtils.isIOS) {
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
+      final orientations = _savedOrientations ?? _currentOrientations;
+      await SystemChrome.setPreferredOrientations(orientations);
+      _currentOrientations = orientations;
     }
+  }
+
+  /// Set orientation preferences that will be tracked by FullscreenManager
+  ///
+  /// Call this instead of `SystemChrome.setPreferredOrientations()` if you want
+  /// FullscreenManager to automatically remember and restore these orientations
+  /// when exiting fullscreen.
+  ///
+  /// **Example:**
+  /// ```dart
+  /// // Set your app to portrait only
+  /// await FullscreenManager.setPreferredOrientations([
+  ///   DeviceOrientation.portraitUp,
+  /// ]);
+  ///
+  /// // Later when entering fullscreen, it will remember portrait-only
+  /// await FullscreenManager.enterFullscreen();
+  /// // Exits fullscreen
+  /// await FullscreenManager.exitFullscreen();
+  /// // Automatically restores to portrait-only
+  /// ```
+  static Future<void> setPreferredOrientations(
+    List<DeviceOrientation> orientations,
+  ) async {
+    _currentOrientations = List.from(orientations);
+    await SystemChrome.setPreferredOrientations(orientations);
   }
 
   /// Shows a fullscreen dialog with the provided widget

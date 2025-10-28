@@ -218,12 +218,16 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
               child: Container(color: Colors.transparent),
             ),
           ),
-        // Animated overlay
+        // Animated overlay with tap-to-hide
         FadeTransition(
           opacity: _overlayOpacity,
-          child: IgnorePointer(
-            ignoring: !_overlayVisible,
-            child: widget.overlayBuilder!(context, widget.controller),
+          child: GestureDetector(
+            onTap: _overlayVisible ? _toggleOverlay : null,
+            behavior: HitTestBehavior.deferToChild,
+            child: IgnorePointer(
+              ignoring: !_overlayVisible,
+              child: widget.overlayBuilder!(context, widget.controller),
+            ),
           ),
         ),
       ],

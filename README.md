@@ -481,8 +481,10 @@ void initState() {
 - `isPipEnabledStream` - Stream of Picture-in-Picture state changes
 - `isPipAvailableStream` - Stream of Picture-in-Picture availability changes
 - `isAirplayAvailableStream` - Stream of AirPlay availability changes
+- `isAirplayConnectedStream` - Stream of AirPlay connection state changes
 - `isFullscreenStream` - Stream of fullscreen state changes
-- `qualityChangedStream` - Stream of quality changes
+- `qualityChangedStream` - Stream of quality changes (emits when user selects a quality)
+- `qualitiesStream` - Stream of available qualities list changes (emits when quality list is loaded/updated)
 
 **Note:** The original event listeners (`addActivityListener`, `addControlListener`) are still available and continue to work as before. Use whichever approach best fits your use case.
 
@@ -799,6 +801,12 @@ NativeVideoPlayer(
 )
 ```
 
+**Overlay Interaction:**
+- Tapping on the video when overlay is hidden shows the overlay
+- Tapping on the overlay when visible hides it (in addition to the auto-hide timer)
+- Interactive elements (buttons, sliders) in the overlay work normally
+- Overlay automatically hides after 3 seconds of inactivity
+
 ### NativeVideoPlayerController
 
 #### Methods
@@ -1039,6 +1047,18 @@ minSdkVersion 24
 - Fullscreen works automatically; no additional configuration needed
 - Ensure proper activity lifecycle management
 - If orientation is locked, fullscreen may not rotate automatically
+
+**Orientation restoration:**
+- The plugin automatically saves and restores orientation preferences when entering/exiting fullscreen
+- To specify app orientation preferences, use the `preferredOrientations` parameter:
+  ```dart
+  final controller = NativeVideoPlayerController(
+    id: 1,
+    preferredOrientations: [DeviceOrientation.portraitUp],
+  );
+  ```
+- Alternatively, use `FullscreenManager.setPreferredOrientations()` before entering fullscreen
+- When exiting fullscreen, the plugin automatically restores your specified orientations
 
 **Media notifications not showing:**
 - The plugin automatically configures `MediaSessionService`

@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] - 2025-10-28
+
+### Added
+- **Quality List Stream**: Added `qualitiesStream` to track changes in available video qualities
+  - Stream emits `List<NativeVideoPlayerQuality>` whenever quality list changes
+  - Useful for updating UI when qualities are loaded or changed
+  - Follows the same pattern as other property streams
+  - Example usage in `custom_video_overlay.dart` demonstrates reactive quality selector updates
+
+- **Automatic Orientation Restoration**: Enhanced `FullscreenManager` with intelligent orientation tracking
+  - Automatically saves current orientation preferences when entering fullscreen
+  - Restores original orientations when exiting fullscreen (no manual setup required)
+  - Added `setPreferredOrientations()` helper method as optional drop-in replacement for `SystemChrome.setPreferredOrientations()`
+  - Added `preferredOrientations` parameter to `NativeVideoPlayerController` for easy orientation configuration
+  - Supports per-controller orientation preferences (e.g., portrait-only apps can specify this when creating the controller)
+
+- **Tap-to-Hide Overlay**: Enhanced custom overlay interaction
+  - Tapping on visible overlay now hides it (in addition to the auto-hide timer)
+  - Tapping on hidden overlay shows it (existing behavior)
+  - Interactive elements (buttons, sliders) are unaffected and work normally
+  - Uses `HitTestBehavior.deferToChild` for proper gesture handling
+
+### Fixed
+- **Stream Disposal Race Condition**: Fixed "Bad state: Cannot add new events after calling close" error
+  - Added `_isDisposed` flag to prevent state updates after disposal
+  - Added `isClosed` checks before adding events to all stream controllers
+  - Improved disposal order: now cancels event subscriptions before closing stream controllers
+  - Added double-disposal guard to prevent errors from multiple dispose calls
+  - Affects: `bufferedPositionController`, `durationController`, `playerStateController`, `positionController`, `speedController`, `isPipEnabledController`, `isPipAvailableController`, `isAirplayAvailableController`, `isAirplayConnectedController`, `isFullscreenController`, `qualityChangedController`, and `qualitiesController`
+
+### Changed
+- **Custom Video Overlay**: Refactored to use streams instead of control events
+  - Now uses `bufferedPositionStream` for reactive buffer position updates
+  - Now uses `qualitiesStream` for reactive quality list updates
+  - Reduced dependency on control event polling
+  - Improved code organization and separation of concerns
+  - Added `dart:async` import for `StreamSubscription` support
+
+### Documentation
+- Updated `NativeVideoPlayerController` documentation with `preferredOrientations` usage examples
+- Updated `FullscreenManager` documentation explaining automatic orientation tracking
+- Added comprehensive explanation of auto quality feature and buffer health thresholds
+
 ## [0.2.9] - 2025-10-27
 
 ### Added

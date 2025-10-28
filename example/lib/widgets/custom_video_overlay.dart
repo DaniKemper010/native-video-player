@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:better_native_video_player/better_native_video_player.dart';
 import 'package:flutter/material.dart';
 
@@ -26,6 +28,10 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
   NativeVideoPlayerQuality? _currentQuality;
   double _currentSpeed = 1.0;
 
+  // Stream subscriptions
+  StreamSubscription<List<NativeVideoPlayerQuality>>? _qualitiesSubscription;
+  StreamSubscription<Duration>? _bufferedPositionSubscription;
+
   // Available playback speeds
   static const List<double> _availableSpeeds = [
     0.25,
@@ -53,11 +59,39 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     _activityState = widget.controller.activityState;
     _qualities = widget.controller.qualities;
 
+    // Subscribe to qualities stream
+    _qualitiesSubscription = widget.controller.qualitiesStream.listen(
+      _handleQualitiesChanged,
+    );
+
+    // Subscribe to buffered position stream
+    _bufferedPositionSubscription = widget.controller.bufferedPositionStream
+        .listen(_handleBufferedPositionChanged);
+
     _getPipAvailability();
 
     debugPrint(
       'CustomVideoOverlay initialized with ${_qualities.length} qualities',
     );
+  }
+
+  void _handleQualitiesChanged(List<NativeVideoPlayerQuality> qualities) {
+    if (!mounted) {
+      return;
+    }
+    debugPrint('Qualities changed: ${qualities.length} qualities available');
+    setState(() {
+      _qualities = qualities;
+    });
+  }
+
+  void _handleBufferedPositionChanged(Duration bufferedPosition) {
+    if (!mounted || _isSeeking) {
+      return;
+    }
+    setState(() {
+      _bufferedPosition = bufferedPosition;
+    });
   }
 
   void _getPipAvailability() async {
@@ -88,6 +122,8 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     widget.controller.removeAirPlayAvailabilityListener(
       _handleAirPlayAvailabilityChange,
     );
+    _qualitiesSubscription?.cancel();
+    _bufferedPositionSubscription?.cancel();
     super.dispose();
   }
 
@@ -136,18 +172,17 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
       setState(() {
         _currentPosition = widget.controller.currentPosition;
         _duration = widget.controller.duration;
-        _bufferedPosition = widget.controller.bufferedPosition;
+        // bufferedPosition is now handled by bufferedPositionStream
       });
     } else if (event.state == PlayerControlState.qualityChanged) {
-      // Update available qualities and current quality
-      setState(() {
-        _qualities = widget.controller.qualities;
-        if (event.data != null && event.data!.containsKey('quality')) {
+      // Update current quality (available qualities are handled by the stream)
+      if (event.data != null && event.data!.containsKey('quality')) {
+        setState(() {
           _currentQuality = NativeVideoPlayerQuality.fromMap(
             event.data!['quality'] as Map<dynamic, dynamic>,
           );
-        }
-      });
+        });
+      }
     } else if (event.state == PlayerControlState.speedChanged) {
       // Update current speed when it changes (e.g., from another overlay instance)
       if (event.data != null && event.data!.containsKey('speed')) {

@@ -22,9 +22,16 @@ import '../platform/video_player_method_channel.dart';
 /// final controller = NativeVideoPlayerController(
 ///   id: videoId,
 ///   autoPlay: true,
+///   preferredOrientations: [DeviceOrientation.portraitUp], // Optional
 /// );
 /// await controller.load(url: 'https://example.com/video.m3u8');
 /// ```
+///
+/// **Orientation Control:**
+/// The `preferredOrientations` parameter allows you to specify which device
+/// orientations are allowed in your app. When exiting fullscreen, the player
+/// will automatically restore these orientations. If not specified, all
+/// orientations are allowed by default.
 ///
 /// **Platform Communication:**
 /// - MethodChannel: Flutter → Native (play, pause, seek, etc.)
@@ -38,7 +45,13 @@ class NativeVideoPlayerController {
     this.canStartPictureInPictureAutomatically = true,
     this.lockToLandscape = true,
     this.enableHDR = false,
-  });
+    List<DeviceOrientation>? preferredOrientations,
+  }) {
+    // Set preferred orientations if provided
+    if (preferredOrientations != null) {
+      FullscreenManager.setPreferredOrientations(preferredOrientations);
+    }
+  }
 
   /// Initialize the controller and wait for the platform view to be created
   Future<void> initialize() async {
@@ -133,6 +146,9 @@ class NativeVideoPlayerController {
   /// Completer to wait for initialization to complete
   Completer<void>? _initializeCompleter;
 
+  /// Flag to track if the controller has been disposed
+  bool _isDisposed = false;
+
   /// Event channel subscriptions for each platform view
   final Map<int, StreamSubscription<dynamic>> _eventSubscriptions =
       <int, StreamSubscription<dynamic>>{};
@@ -178,42 +194,74 @@ class NativeVideoPlayerController {
       StreamController<bool>.broadcast();
   final StreamController<NativeVideoPlayerQuality> _qualityChangedController =
       StreamController<NativeVideoPlayerQuality>.broadcast();
+  final StreamController<List<NativeVideoPlayerQuality>> _qualitiesController =
+      StreamController<List<NativeVideoPlayerQuality>>.broadcast();
 
   /// Updates the internal state
   void _updateState(NativeVideoPlayerState newState) {
     final oldState = _state;
     _state = newState;
 
+    // Don't emit events if the controller is disposed
+    if (_isDisposed) {
+      return;
+    }
+
     // Emit to individual streams when values change
     if (oldState.bufferedPosition != newState.bufferedPosition) {
-      _bufferedPositionController.add(newState.bufferedPosition);
+      if (!_bufferedPositionController.isClosed) {
+        _bufferedPositionController.add(newState.bufferedPosition);
+      }
     }
     if (oldState.duration != newState.duration) {
-      _durationController.add(newState.duration);
+      if (!_durationController.isClosed) {
+        _durationController.add(newState.duration);
+      }
     }
     if (oldState.activityState != newState.activityState) {
-      _playerStateController.add(newState.activityState);
+      if (!_playerStateController.isClosed) {
+        _playerStateController.add(newState.activityState);
+      }
     }
     if (oldState.currentPosition != newState.currentPosition) {
-      _positionController.add(newState.currentPosition);
+      if (!_positionController.isClosed) {
+        _positionController.add(newState.currentPosition);
+      }
     }
     if (oldState.speed != newState.speed) {
-      _speedController.add(newState.speed);
+      if (!_speedController.isClosed) {
+        _speedController.add(newState.speed);
+      }
     }
     if (oldState.isPipEnabled != newState.isPipEnabled) {
-      _isPipEnabledController.add(newState.isPipEnabled);
+      if (!_isPipEnabledController.isClosed) {
+        _isPipEnabledController.add(newState.isPipEnabled);
+      }
     }
     if (oldState.isPipAvailable != newState.isPipAvailable) {
-      _isPipAvailableController.add(newState.isPipAvailable);
+      if (!_isPipAvailableController.isClosed) {
+        _isPipAvailableController.add(newState.isPipAvailable);
+      }
     }
     if (oldState.isAirplayAvailable != newState.isAirplayAvailable) {
-      _isAirplayAvailableController.add(newState.isAirplayAvailable);
+      if (!_isAirplayAvailableController.isClosed) {
+        _isAirplayAvailableController.add(newState.isAirplayAvailable);
+      }
     }
     if (oldState.isAirplayConnected != newState.isAirplayConnected) {
-      _isAirplayConnectedController.add(newState.isAirplayConnected);
+      if (!_isAirplayConnectedController.isClosed) {
+        _isAirplayConnectedController.add(newState.isAirplayConnected);
+      }
     }
     if (oldState.isFullScreen != newState.isFullScreen) {
-      _isFullscreenController.add(newState.isFullScreen);
+      if (!_isFullscreenController.isClosed) {
+        _isFullscreenController.add(newState.isFullScreen);
+      }
+    }
+    if (oldState.qualities != newState.qualities) {
+      if (!_qualitiesController.isClosed) {
+        _qualitiesController.add(newState.qualities);
+      }
     }
   }
 
@@ -322,6 +370,10 @@ class NativeVideoPlayerController {
   /// Stream of quality changes
   Stream<NativeVideoPlayerQuality> get qualityChangedStream =>
       _qualityChangedController.stream;
+
+  /// Stream of available qualities list changes
+  Stream<List<NativeVideoPlayerQuality>> get qualitiesStream =>
+      _qualitiesController.stream;
 
   /// Parameters passed to native side when creating the platform view
   /// Includes controller ID, autoPlay, PiP settings, media info, and fullscreen state
@@ -493,7 +545,9 @@ class NativeVideoPlayerController {
                     controlEvent.data!['quality'] != null) {
                   final qualityMap = controlEvent.data!['quality'] as Map;
                   final quality = NativeVideoPlayerQuality.fromMap(qualityMap);
-                  _qualityChangedController.add(quality);
+                  if (!_qualityChangedController.isClosed) {
+                    _qualityChangedController.add(quality);
+                  }
                 }
               }
 
@@ -1051,6 +1105,14 @@ class NativeVideoPlayerController {
   /// }
   /// ```
   Future<void> dispose() async {
+    // Prevent double disposal
+    if (_isDisposed) {
+      return;
+    }
+
+    // Mark as disposed immediately to prevent new events from being added
+    _isDisposed = true;
+
     // Pause playback first to avoid crashes during disposal
     if (_state.activityState.isPlaying) {
       await pause();
@@ -1063,10 +1125,8 @@ class NativeVideoPlayerController {
       await exitFullScreen();
     }
 
-    // Dispose native player resources (removes shared player from manager)
-    await _methodChannel?.dispose();
-
-    // Cancel all event channel subscriptions
+    // Cancel all event channel subscriptions BEFORE closing stream controllers
+    // This prevents new events from coming in while we're closing
     for (final StreamSubscription<dynamic> subscription
         in _eventSubscriptions.values) {
       await subscription.cancel();
@@ -1083,6 +1143,9 @@ class NativeVideoPlayerController {
     _airPlayAvailabilityHandlers.clear();
     _airPlayConnectionHandlers.clear();
 
+    // Dispose native player resources (removes shared player from manager)
+    await _methodChannel?.dispose();
+
     // Close all stream controllers
     await _bufferedPositionController.close();
     await _durationController.close();
@@ -1095,6 +1158,7 @@ class NativeVideoPlayerController {
     await _isAirplayConnectedController.close();
     await _isFullscreenController.close();
     await _qualityChangedController.close();
+    await _qualitiesController.close();
 
     // Clear platform view references
     _platformViewIds.clear();
@@ -1107,7 +1171,6 @@ class NativeVideoPlayerController {
 
     // Clear other state
     _methodChannel = null;
-    _updateState(const NativeVideoPlayerState());
     _url = null;
     _initializeCompleter = null;
   }
