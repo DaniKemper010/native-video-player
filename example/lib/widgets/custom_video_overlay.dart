@@ -18,6 +18,7 @@ class CustomVideoOverlay extends StatefulWidget {
 
 class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
   bool _isSeeking = false;
+  Duration? _targetSeekPosition; // Track where we're seeking to
   Duration _currentPosition = Duration.zero;
   Duration _duration = Duration.zero;
   Duration _bufferedPosition = Duration.zero;
@@ -168,12 +169,36 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
       return;
     }
 
-    if (event.state == PlayerControlState.timeUpdated && !_isSeeking) {
-      setState(() {
-        _currentPosition = widget.controller.currentPosition;
-        _duration = widget.controller.duration;
-        // bufferedPosition is now handled by bufferedPositionStream
-      });
+    if (event.state == PlayerControlState.timeUpdated) {
+      final newPosition = widget.controller.currentPosition;
+
+      // If we have a target seek position, check if we've reached it
+      if (_targetSeekPosition != null) {
+        // Consider the seek complete if we're within 200ms of the target
+        final difference =
+            (newPosition.inMilliseconds - _targetSeekPosition!.inMilliseconds)
+                .abs();
+        if (difference < 200) {
+          // Seek completed, clear the flag and target
+          setState(() {
+            _isSeeking = false;
+            _targetSeekPosition = null;
+            _currentPosition = newPosition;
+            _duration = widget.controller.duration;
+          });
+        }
+        // Otherwise, ignore this update as it's likely an old position
+        return;
+      }
+
+      // Normal update when not seeking
+      if (!_isSeeking) {
+        setState(() {
+          _currentPosition = newPosition;
+          _duration = widget.controller.duration;
+          // bufferedPosition is now handled by bufferedPositionStream
+        });
+      }
     } else if (event.state == PlayerControlState.qualityChanged) {
       // Update current quality (available qualities are handled by the stream)
       if (event.data != null && event.data!.containsKey('quality')) {
@@ -222,12 +247,20 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
   }
 
   void _onSeekEnd(double value) {
+    final targetPosition = Duration(milliseconds: value.toInt());
     if (_duration.inMilliseconds > 0) {
-      widget.controller.seekTo(Duration(milliseconds: value.toInt()));
+      setState(() {
+        // Store target position and keep _isSeeking true until we reach it
+        _targetSeekPosition = targetPosition;
+        _currentPosition = targetPosition; // Show target position immediately
+      });
+      widget.controller.seekTo(targetPosition);
+    } else {
+      setState(() {
+        _isSeeking = false;
+        _targetSeekPosition = null;
+      });
     }
-    setState(() {
-      _isSeeking = false;
-    });
   }
 
   String _formatDuration(Duration duration) {

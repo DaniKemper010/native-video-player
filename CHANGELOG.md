@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11] - 2025-10-28
+
+### Fixed
+- **Progress Bar Seek Jump**: Fixed issue where progress bar would jump back briefly after seeking
+  - Added `_targetSeekPosition` to track where we're seeking to
+  - Modified seek handling to ignore old position events during seek operation
+  - Progress bar now stays at target position until native player confirms seek completion
+  - Position updates within 200ms of target are considered successful seeks
+  - Eliminates the 500ms "jump back" behavior when seeking
+
 ## [0.2.10] - 2025-10-28
 
 ### Added
