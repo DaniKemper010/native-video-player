@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.12] - 2025-10-30
+
+### Added
+- **Automatic Overlay Management for PiP**: Custom overlays now automatically hide when entering PiP and show when exiting PiP on Android
+  - Prevents overlay from appearing in PiP window
+  - Seamless user experience when transitioning to/from PiP mode
+  - Only affects Android platform (iOS handles PiP differently)
+
+### Improved
+- **Enhanced Picture-in-Picture Transitions (Android)**: Major improvements to PiP mode behavior
+  - Added automatic fullscreen entry before PiP for better visual transitions
+  - Added `wasFullscreenBeforePip` tracking to restore correct state after PiP
+  - Implemented source rect hints for more accurate PiP window positioning
+  - Added seamless resize support for Android 12+ for smoother PiP transitions
+  - PiP window now correctly restores to inline or fullscreen mode based on state before PiP entry
+  - Improved visual consistency when entering and exiting PiP mode
+
+- **Shared Player Surface Reconnection**: Enhanced surface handling for shared players
+  - Added automatic surface reconnection after `releaseResources()` is called
+  - Ensures video playback resumes correctly when returning to a video with a shared player
+  - Prevents black screen issues when navigating back to previously viewed videos
+
+- **PiP Availability Detection**: Improved activity context handling for PiP feature detection
+  - Added `getActivity()` helper method to properly unwrap `ContextWrapper` instances
+  - More reliable PiP availability checks across different context types
+  - Better error handling when activity context is not immediately available
+
+### Fixed
+- **Custom Overlay in PiP Window**: Fixed issue where custom overlays would appear in the PiP window on Android
+  - Overlay is now automatically hidden before entering PiP
+  - Overlay automatically reappears when exiting PiP
+  - Provides clean PiP experience with only native system controls
+
+- **Fullscreen State After PiP**: Fixed incorrect fullscreen state restoration after exiting PiP
+  - Now properly tracks fullscreen state before entering PiP
+  - Restores to inline mode if video was inline before PiP
+  - Maintains fullscreen mode if video was fullscreen before PiP
+  - Eliminates unexpected fullscreen state changes after PiP
+
 ## [0.2.11] - 2025-10-28
 
 ### Fixed

@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'better_native_video_player'
-  s.version          = '0.2.11'
+  s.version          = '0.2.12'
   s.summary          = 'A Flutter plugin for native video playback on iOS and Android'
   s.description      = <<-DESC
 A Flutter plugin that provides native video player using AVPlayerViewController on iOS

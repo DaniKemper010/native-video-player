@@ -83,6 +83,9 @@ class VideoPlayerView(
     private var canStartPictureInPictureAutomatically: Boolean = false
     private var showNativeControlsOriginal: Boolean = true
 
+    // Store the fullscreen state before entering PiP so we can restore it
+    private var wasFullscreenBeforePip: Boolean = false
+
     // HDR setting
     private var enableHDR: Boolean = false
 
@@ -191,6 +194,21 @@ class VideoPlayerView(
             }
 
             Log.d(TAG, "PlayerView configured")
+        }
+
+        // For shared players that already existed, ensure surface is properly connected
+        // This is crucial when returning to a video after calling releaseResources()
+        if (isSharedPlayer) {
+            Log.d(TAG, "Ensuring surface connection for existing shared player")
+            playerView.post {
+                // Force reconnection by detaching and reattaching the player
+                val currentPlayer = playerView.player
+                if (currentPlayer != null) {
+                    playerView.player = null
+                    playerView.player = currentPlayer
+                    Log.d(TAG, "Surface reconnected for shared player on init")
+                }
+            }
         }
 
         // Create container view that holds the player view
@@ -646,6 +664,23 @@ class VideoPlayerView(
             if (activity != null) {
                 Log.d(TAG, "Activity found for PiP: ${activity.javaClass.simpleName}")
 
+                // Save the fullscreen state before entering PiP so we can restore it later
+                wasFullscreenBeforePip = isFullScreen
+                Log.d(TAG, "Saved fullscreen state before PiP: $wasFullscreenBeforePip")
+
+                // First, enter fullscreen if not already in fullscreen
+                // This ensures the video takes up the full screen before entering PiP
+                if (!isFullScreen) {
+                    Log.d(TAG, "Entering fullscreen before PiP")
+                    enterFullscreenNative(activity)
+                    isFullScreen = true
+                    // Send fullscreen change event to Flutter
+                    eventHandler.sendEvent("fullscreenChange", mapOf("isFullscreen" to true))
+
+                    // Wait a moment for fullscreen to settle
+                    Thread.sleep(100)
+                }
+
                 val aspectRatio = player.videoSize.let { size ->
                     if (size.width > 0 && size.height > 0) {
                         Log.d(TAG, "Using video aspect ratio: ${size.width}x${size.height}")
@@ -656,17 +691,34 @@ class VideoPlayerView(
                     }
                 }
 
-                val params = android.app.PictureInPictureParams.Builder()
-                    .setAspectRatio(aspectRatio)
-                    .build()
+                // Get the bounds of the video player view to set as source rect
+                val sourceRectHint = android.graphics.Rect()
+                playerView.getGlobalVisibleRect(sourceRectHint)
+                Log.d(TAG, "Source rect hint: $sourceRectHint")
 
-                // Hide ExoPlayer controls BEFORE entering PiP mode - only system PiP controls will show
-                // Setting useController to false removes the controller UI completely
+                val paramsBuilder = android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(aspectRatio)
+
+                // Set source rect hint to focus on video player area
+                // This helps Android crop to just the video player
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    paramsBuilder.setSourceRectHint(sourceRectHint)
+                }
+
+                // For Android 12+, enable seamless resize for better transitions
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    paramsBuilder.setSeamlessResizeEnabled(true)
+                }
+
+                val params = paramsBuilder.build()
+
+                // Hide all controls (both native and custom) BEFORE entering PiP mode
+                // Only system PiP controls will show
                 Log.d(TAG, "Current useController: ${playerView.useController}")
                 playerView.useController = false
                 playerView.controllerAutoShow = false
                 playerView.hideController()
-                Log.d(TAG, "ExoPlayer controls hidden (useController: ${playerView.useController})")
+                Log.d(TAG, "All controls hidden (useController: ${playerView.useController})")
 
                 val entered = activity.enterPictureInPictureMode(params)
                 Log.d(TAG, "PiP mode entered: $entered")
@@ -682,8 +734,16 @@ class VideoPlayerView(
                     eventHandler.sendEvent("pipStart", mapOf("isPictureInPicture" to true))
                     return true
                 } else {
-                    // Restore controls if PiP failed
+                    // Restore controls and fullscreen state if PiP failed
                     playerView.useController = showNativeControlsOriginal
+
+                    // Exit fullscreen if we entered it for PiP
+                    if (!wasFullscreenBeforePip && isFullScreen) {
+                        exitFullscreenNative(activity)
+                        isFullScreen = false
+                        eventHandler.sendEvent("fullscreenChange", mapOf("isFullscreen" to false))
+                    }
+
                     Log.e(TAG, "Failed to enter PiP mode")
                     return false
                 }
@@ -767,9 +827,24 @@ class VideoPlayerView(
                     }
                 }
 
-                val params = android.app.PictureInPictureParams.Builder()
+                // Get the bounds of the video player view for auto PiP
+                val sourceRectHint = android.graphics.Rect()
+                playerView.getGlobalVisibleRect(sourceRectHint)
+
+                val paramsBuilder = android.app.PictureInPictureParams.Builder()
                     .setAspectRatio(aspectRatio)
-                    .build()
+
+                // Set source rect hint for auto PiP
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    paramsBuilder.setSourceRectHint(sourceRectHint)
+                }
+
+                // Enable seamless resize for Android 12+
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    paramsBuilder.setSeamlessResizeEnabled(true)
+                }
+
+                val params = paramsBuilder.build()
 
                 // Hide ExoPlayer controls BEFORE entering PiP mode
                 playerView.useController = false
@@ -806,11 +881,37 @@ class VideoPlayerView(
      * This should be called when onPictureInPictureModeChanged detects exit from PiP
      */
     fun onExitPictureInPicture() {
-        Log.d(TAG, "Exiting PiP mode - restoring controls")
+        Log.d(TAG, "Exiting PiP mode - restoring controls and fullscreen state")
+
+        // Restore controls
         playerView.useController = showNativeControlsOriginal
         playerView.controllerAutoShow = true
         if (showNativeControlsOriginal) {
             playerView.showController()
+        }
+        Log.d(TAG, "ExoPlayer controls restored to: $showNativeControlsOriginal")
+
+        // Restore fullscreen state to what it was before entering PiP
+        val pluginActivity = NativeVideoPlayerPlugin.getActivity()
+        val activity = pluginActivity ?: getActivity(context)
+
+        if (activity != null) {
+            if (!wasFullscreenBeforePip && isFullScreen) {
+                // Was inline before PiP, so exit fullscreen now
+                Log.d(TAG, "Restoring to inline mode (was inline before PiP)")
+                exitFullscreenNative(activity)
+                isFullScreen = false
+                eventHandler.sendEvent("fullscreenChange", mapOf("isFullscreen" to false))
+            } else if (wasFullscreenBeforePip && !isFullScreen) {
+                // Was fullscreen before PiP, should stay fullscreen (this shouldn't happen normally)
+                Log.d(TAG, "Was fullscreen before PiP, ensuring fullscreen state")
+                isFullScreen = true
+            } else {
+                // State matches - just log
+                Log.d(TAG, "Fullscreen state matches saved state: $wasFullscreenBeforePip")
+            }
+        } else {
+            Log.w(TAG, "Could not get activity to restore fullscreen state")
         }
 
         // ALWAYS set media item when exiting PiP to ensure correct media controls
@@ -820,7 +921,9 @@ class VideoPlayerView(
             notificationHandler.setupMediaSession(mediaInfo)
         }
 
-        Log.d(TAG, "ExoPlayer controls restored to: $showNativeControlsOriginal")
+        // Send pipStop event to Flutter to update controller state and show custom overlay
+        eventHandler.sendEvent("pipStop", mapOf("isPictureInPicture" to false))
+        Log.d(TAG, "Sent pipStop event to Flutter")
     }
 
     /**

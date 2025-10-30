@@ -427,13 +427,35 @@ class VideoPlayerMethodHandler(
     }
 
     /**
+     * Helper method to get Activity from Context, handling ContextWrapper cases
+     * Same pattern as used in VideoPlayerView
+     */
+    private fun getActivity(ctx: Context?): Activity? {
+        if (ctx == null) {
+            return null
+        }
+
+        if (ctx is Activity) {
+            return ctx
+        }
+
+        if (ctx is android.content.ContextWrapper) {
+            return getActivity(ctx.baseContext)
+        }
+
+        return null
+    }
+
+    /**
      * Checks if Picture-in-Picture is available on this device
      * PiP is available on Android 8.0 (API 26) and above
      */
     private fun handleIsPictureInPictureAvailable(result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Check if we have an Activity context
-            val activity = context as? Activity
+            // Try to get activity from plugin first, then unwrap context
+            val pluginActivity = com.huddlecommunity.better_native_video_player.NativeVideoPlayerPlugin.getActivity()
+            val activity = pluginActivity ?: getActivity(context)
+
             if (activity != null) {
                 // Check if the device supports PiP mode
                 val hasPipFeature = activity.packageManager.hasSystemFeature(
@@ -476,7 +498,10 @@ class VideoPlayerMethodHandler(
      */
     private fun checkAndSendPipAvailability() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val activity = context as? Activity
+            // Try to get activity from plugin first, then unwrap context
+            val pluginActivity = com.huddlecommunity.better_native_video_player.NativeVideoPlayerPlugin.getActivity()
+            val activity = pluginActivity ?: getActivity(context)
+
             if (activity != null) {
                 val hasPipFeature = activity.packageManager.hasSystemFeature(
                     android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE

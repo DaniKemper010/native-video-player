@@ -79,6 +79,28 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
   }
 
   void _handleControlEvent(PlayerControlEvent event) {
+    // Hide overlay when entering PiP (Android only)
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      if (event.state == PlayerControlState.pipStarted && _overlayVisible) {
+        setState(() {
+          _overlayVisible = false;
+          _overlayAnimationController.reverse();
+          _hideTimer?.cancel();
+        });
+        return;
+      }
+
+      // Show overlay when exiting PiP (Android only)
+      if (event.state == PlayerControlState.pipStopped && !_overlayVisible) {
+        setState(() {
+          _overlayVisible = true;
+          _overlayAnimationController.forward();
+          _startHideTimer();
+        });
+        return;
+      }
+    }
+
     // Show overlay when exiting fullscreen
     if (event.state == PlayerControlState.fullscreenExited &&
         !_overlayVisible) {
