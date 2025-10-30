@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.13] - 2025-10-30
+
+### Added
+- **Overlay Lock Feature**: Added ability to lock custom overlay to always be visible
+  - New `lockOverlay()` method to keep overlay permanently visible
+  - New `unlockOverlay()` method to restore normal tap-to-hide behavior
+  - New `isOverlayLocked` getter to check current lock state
+  - New `isOverlayLockedStream` for reactive lock state updates
+  - When locked, overlay cannot be dismissed by tapping or auto-hide timer
+  - Useful for live streams, interactive content, or when constant access to controls is needed
+
+### Fixed
+- **AirPlay Connection State Updates**: Fixed issue where AirPlay connection state was not properly updating the controller state
+  - Now properly updates `_state.isAirplayConnected` when receiving `airPlayConnectionChanged` events
+  - Ensures `isAirplayConnectedStream` emits correctly when connection state changes
+  - Provides consistent state tracking between event handlers and controller state
+  
 ## [0.2.12] - 2025-10-30
 
 ### Added

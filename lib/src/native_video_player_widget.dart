@@ -48,6 +48,7 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
   late Animation<double> _overlayOpacity;
   bool _overlayVisible = true;
   Timer? _hideTimer;
+  StreamSubscription<bool>? _overlayLockSubscription;
 
   @override
   void initState() {
@@ -76,6 +77,27 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
 
     // Listen to controller events to restart hide timer on user interaction
     widget.controller.addControlListener(_handleControlEvent);
+
+    // Listen to overlay lock state changes
+    _overlayLockSubscription = widget.controller.isOverlayLockedStream.listen((
+      isLocked,
+    ) {
+      if (isLocked) {
+        // When locked, show overlay and cancel hide timer
+        _hideTimer?.cancel();
+        if (!_overlayVisible) {
+          setState(() {
+            _overlayVisible = true;
+            _overlayAnimationController.forward();
+          });
+        }
+      } else {
+        // When unlocked, start the hide timer
+        if (_overlayVisible) {
+          _startHideTimer();
+        }
+      }
+    });
   }
 
   void _handleControlEvent(PlayerControlEvent event) {
@@ -118,9 +140,15 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
   }
 
   void _startHideTimer() {
+    // Don't start hide timer if overlay is locked
+    if (widget.controller.isOverlayLocked) {
+      return;
+    }
+
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted && _overlayVisible) {
+      // Don't hide if overlay is locked
+      if (mounted && _overlayVisible && !widget.controller.isOverlayLocked) {
         setState(() {
           _overlayVisible = false;
           _overlayAnimationController.reverse();
@@ -130,6 +158,11 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
   }
 
   void _toggleOverlay() {
+    // Don't allow toggle if overlay is locked
+    if (widget.controller.isOverlayLocked) {
+      return;
+    }
+
     setState(() {
       _overlayVisible = !_overlayVisible;
       if (_overlayVisible) {
@@ -150,6 +183,7 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
     }
 
     widget.controller.removeControlListener(_handleControlEvent);
+    _overlayLockSubscription?.cancel();
     _hideTimer?.cancel();
     _overlayAnimationController.dispose();
     super.dispose();

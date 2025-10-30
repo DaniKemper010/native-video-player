@@ -117,8 +117,21 @@ class NativeVideoPlayerController {
   /// Set by FullscreenVideoPlayer when it's created
   VoidCallback? _dartFullscreenCloseCallback;
 
+  /// Whether the overlay visibility is locked (cannot be dismissed)
+  bool _isOverlayLocked = false;
+
   /// Whether we have a custom overlay (determines if we use Dart fullscreen and hide native controls)
   bool get _hasCustomOverlay => _overlayBuilder != null;
+
+  /// Returns whether the overlay is currently locked (always visible)
+  bool get isOverlayLocked => _isOverlayLocked;
+
+  /// Stream controller for overlay lock state changes
+  final StreamController<bool> _isOverlayLockedController =
+      StreamController<bool>.broadcast();
+
+  /// Stream of overlay lock state changes
+  Stream<bool> get isOverlayLockedStream => _isOverlayLockedController.stream;
 
   /// Current state of the video player
   NativeVideoPlayerState _state = const NativeVideoPlayerState();
@@ -459,6 +472,7 @@ class NativeVideoPlayerController {
             // Handle AirPlay connection change event
             if (eventName == 'airPlayConnectionChanged') {
               final bool isConnected = map['isConnected'] as bool? ?? false;
+              _updateState(_state.copyWith(isAirplayConnected: isConnected));
               for (final handler in _airPlayConnectionHandlers) {
                 handler(isConnected);
               }
@@ -1023,6 +1037,45 @@ class NativeVideoPlayerController {
     await _methodChannel!.showAirPlayPicker();
   }
 
+  /// Locks the custom overlay to be always visible
+  ///
+  /// When the overlay is locked, it cannot be dismissed by tapping or by auto-hide timer.
+  /// This is useful when you want to keep controls always visible, such as during
+  /// live streams, interactive content, or when the user needs constant access to controls.
+  ///
+  /// **Usage:**
+  /// ```dart
+  /// // Lock overlay to always be visible
+  /// controller.lockOverlay();
+  /// ```
+  ///
+  /// To unlock the overlay and restore normal behavior, call [unlockOverlay].
+  void lockOverlay() {
+    _isOverlayLocked = true;
+    if (!_isOverlayLockedController.isClosed) {
+      _isOverlayLockedController.add(true);
+    }
+  }
+
+  /// Unlocks the custom overlay to allow it to be dismissed
+  ///
+  /// When the overlay is unlocked, it can be dismissed by tapping or will auto-hide
+  /// after a period of inactivity (default 3 seconds).
+  ///
+  /// **Usage:**
+  /// ```dart
+  /// // Unlock overlay to allow normal tap-to-hide behavior
+  /// controller.unlockOverlay();
+  /// ```
+  ///
+  /// To lock the overlay again and keep it always visible, call [lockOverlay].
+  void unlockOverlay() {
+    _isOverlayLocked = false;
+    if (!_isOverlayLockedController.isClosed) {
+      _isOverlayLockedController.add(false);
+    }
+  }
+
   /// Releases Flutter-side resources while keeping the native player alive
   ///
   /// Use this when navigating away from a screen but want to keep the video
@@ -1075,13 +1128,13 @@ class NativeVideoPlayerController {
     _platformViewContexts.clear();
     _primaryPlatformViewId = null;
 
-    // Clear overlay and fullscreen references
-    _overlayBuilder = null;
-    _dartFullscreenCloseCallback = null;
-
     // Clear method channel reference (but don't dispose native player)
     _methodChannel = null;
     _initializeCompleter = null;
+
+    // Clear overlay and fullscreen references
+    _overlayBuilder = null;
+    _dartFullscreenCloseCallback = null;
 
     // Note: We do NOT clear _state and _url so we can resume playback
     // Note: We do NOT call _methodChannel.dispose() to keep native player alive
@@ -1159,6 +1212,7 @@ class NativeVideoPlayerController {
     await _isFullscreenController.close();
     await _qualityChangedController.close();
     await _qualitiesController.close();
+    await _isOverlayLockedController.close();
 
     // Clear platform view references
     _platformViewIds.clear();

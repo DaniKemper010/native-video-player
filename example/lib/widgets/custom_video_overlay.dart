@@ -24,6 +24,7 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
   Duration _bufferedPosition = Duration.zero;
   PlayerActivityState _activityState = PlayerActivityState.idle;
   bool _isAirPlayAvailable = false;
+  bool _isAirPlayConnected = false;
   bool _isPipAvailable = false;
   List<NativeVideoPlayerQuality> _qualities = [];
   NativeVideoPlayerQuality? _currentQuality;
@@ -32,6 +33,7 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
   // Stream subscriptions
   StreamSubscription<List<NativeVideoPlayerQuality>>? _qualitiesSubscription;
   StreamSubscription<Duration>? _bufferedPositionSubscription;
+  StreamSubscription<bool>? _airPlayConnectedSubscription;
 
   // Available playback speeds
   static const List<double> _availableSpeeds = [
@@ -68,6 +70,10 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     // Subscribe to buffered position stream
     _bufferedPositionSubscription = widget.controller.bufferedPositionStream
         .listen(_handleBufferedPositionChanged);
+
+    // Subscribe to AirPlay connection stream
+    _airPlayConnectedSubscription = widget.controller.isAirplayConnectedStream
+        .listen(_handleAirPlayConnectionChanged);
 
     _getPipAvailability();
 
@@ -116,6 +122,16 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     });
   }
 
+  void _handleAirPlayConnectionChanged(bool isConnected) {
+    if (!mounted) {
+      return;
+    }
+    debugPrint('AirPlay connection changed: $isConnected');
+    setState(() {
+      _isAirPlayConnected = isConnected;
+    });
+  }
+
   @override
   void dispose() {
     widget.controller.removeActivityListener(_handleActivityEvent);
@@ -125,6 +141,7 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     );
     _qualitiesSubscription?.cancel();
     _bufferedPositionSubscription?.cancel();
+    _airPlayConnectedSubscription?.cancel();
     super.dispose();
   }
 
@@ -313,11 +330,16 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
               // AirPlay button (only shown if available)
               if (_isAirPlayAvailable)
                 IconButton(
-                  icon: const Icon(Icons.airplay, color: Colors.white),
+                  icon: Icon(
+                    _isAirPlayConnected ? Icons.cast_connected : Icons.airplay,
+                    color: _isAirPlayConnected ? Colors.blue : Colors.white,
+                  ),
                   onPressed: () async {
                     await widget.controller.showAirPlayPicker();
                   },
-                  tooltip: 'AirPlay',
+                  tooltip: _isAirPlayConnected
+                      ? 'AirPlay Connected'
+                      : 'AirPlay',
                 ),
             ],
           ),
