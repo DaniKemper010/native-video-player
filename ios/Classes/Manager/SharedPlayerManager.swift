@@ -29,6 +29,13 @@ class SharedPlayerManager {
     /// This ensures PiP settings persist across all views using the same controller
     private var pipSettings: [Int: PipSettings] = [:]
 
+    /// Store available qualities for each controller
+    /// This ensures qualities persist across view recreations
+    private var qualitiesCache: [Int: [[String: Any]]] = [:]
+
+    /// Store quality levels for each controller
+    private var qualityLevelsCache: [Int: [VideoPlayer.QualityLevel]] = [:]
+
     struct PipSettings {
         let allowsPictureInPicture: Bool
         let canStartPictureInPictureAutomatically: Bool
@@ -64,6 +71,26 @@ class SharedPlayerManager {
     /// Returns nil if no settings have been stored for this controller
     func getPipSettings(for controllerId: Int) -> PipSettings? {
         return pipSettings[controllerId]
+    }
+
+    /// Sets available qualities for a controller
+    /// This ensures qualities persist across view recreations
+    func setQualities(for controllerId: Int, qualities: [[String: Any]], qualityLevels: [VideoPlayer.QualityLevel]) {
+        qualitiesCache[controllerId] = qualities
+        qualityLevelsCache[controllerId] = qualityLevels
+        print("   ✅ Stored \(qualities.count) qualities for controller \(controllerId)")
+    }
+
+    /// Gets available qualities for a controller
+    /// Returns nil if no qualities have been stored for this controller
+    func getQualities(for controllerId: Int) -> [[String: Any]]? {
+        return qualitiesCache[controllerId]
+    }
+
+    /// Gets quality levels for a controller
+    /// Returns nil if no quality levels have been stored for this controller
+    func getQualityLevels(for controllerId: Int) -> [VideoPlayer.QualityLevel]? {
+        return qualityLevelsCache[controllerId]
     }
 
     /// Stops and clears player from all views using this controller
@@ -119,6 +146,10 @@ class SharedPlayerManager {
         // Remove PiP settings
         pipSettings.removeValue(forKey: controllerId)
 
+        // Remove qualities cache
+        qualitiesCache.removeValue(forKey: controllerId)
+        qualityLevelsCache.removeValue(forKey: controllerId)
+
         // If this was the controller with automatic PiP, clear it
         if controllerWithAutomaticPiP == controllerId {
             controllerWithAutomaticPiP = nil
@@ -133,6 +164,8 @@ class SharedPlayerManager {
         videoPlayerViews.removeAll()
         primaryViewIdForController.removeAll()
         pipSettings.removeAll()
+        qualitiesCache.removeAll()
+        qualityLevelsCache.removeAll()
         controllerWithAutomaticPiP = nil
     }
     

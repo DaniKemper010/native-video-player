@@ -27,6 +27,10 @@ object SharedPlayerManager {
     // This ensures PiP settings persist across all views using the same controller
     private val pipSettings = mutableMapOf<Int, PipSettings>()
 
+    // Store available qualities for each controller
+    // This ensures qualities persist across view recreations
+    private val qualitiesCache = mutableMapOf<Int, List<Map<String, Any>>>()
+
     data class PipSettings(
         val allowsPictureInPicture: Boolean,
         val canStartPictureInPictureAutomatically: Boolean,
@@ -121,6 +125,23 @@ object SharedPlayerManager {
     }
 
     /**
+     * Sets available qualities for a controller
+     * This ensures qualities persist across view recreations
+     */
+    fun setQualities(controllerId: Int, qualities: List<Map<String, Any>>) {
+        qualitiesCache[controllerId] = qualities
+        Log.d(TAG, "Stored ${qualities.size} qualities for controller $controllerId")
+    }
+
+    /**
+     * Gets available qualities for a controller
+     * Returns null if no qualities have been stored for this controller
+     */
+    fun getQualities(controllerId: Int): List<Map<String, Any>>? {
+        return qualitiesCache[controllerId]
+    }
+
+    /**
      * Stops all views for a given controller
      */
     fun stopAllViewsForController(controllerId: Int) {
@@ -150,6 +171,9 @@ object SharedPlayerManager {
         // Remove PiP settings
         pipSettings.remove(controllerId)
 
+        // Remove qualities cache
+        qualitiesCache.remove(controllerId)
+
         // Clear active views for this controller
         activeViews.remove(controllerId)
 
@@ -175,6 +199,9 @@ object SharedPlayerManager {
 
         // Clear PiP settings
         pipSettings.clear()
+
+        // Clear qualities cache
+        qualitiesCache.clear()
 
         // Stop the service when clearing all players
         stopMediaSessionService(context)

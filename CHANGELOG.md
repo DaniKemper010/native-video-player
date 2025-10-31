@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.14] - 2025-10-31
+
+### Added
+- **Continuous Buffering State Reporting**: Buffering state is now always reported in real-time
+  - Added `isBuffering` boolean to `timeUpdate` events (sent every 500ms)
+  - Android: Tracks `player.playbackState == Player.STATE_BUFFERING`
+  - iOS: Tracks `player.timeControlStatus == .waitingToPlayAtSpecifiedRate`
+  - Flutter controller automatically transitions to `PlayerActivityState.buffering` when buffering starts
+  - Ensures UI always reflects accurate buffering status, even when video is in play state
+
+### Improved
+- **Qualities Persistence After Re-initialization**: Video qualities now persist across view recreations
+  - Added `qualitiesCache` storage to `SharedPlayerManager` on both iOS and Android
+  - Qualities are automatically cached when fetched and restored when view is recreated
+  - Eliminates the need to re-fetch qualities from network after navigation
+  - Ensures qualities are immediately available after calling `releaseResources()` and re-initializing
+
+### Fixed
+- **Buffering Not Visible During Playback**: Fixed issue where video would buffer while in play state without indicating buffering status
+  - Buffering state is now continuously tracked and reported every 500ms
+  - UI can now simultaneously show that video wants to play but is currently buffering
+  - Prevents confusion when video stalls during playback
+
+- **Missing Qualities After Navigation**: Fixed issue where video qualities would disappear after navigating away and back
+  - Qualities are now stored in `SharedPlayerManager` which survives view recreation
+  - `getAvailableQualities()` automatically restores from cache when view instance is empty
+  - Works correctly with the release/re-init pattern used when navigating
+
 ## [0.2.13] - 2025-10-30
 
 ### Added

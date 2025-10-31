@@ -270,7 +270,7 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
     _controller.removeControlListener(_handleControlEvent);
     // Only dispose if we created the controller
     if (_ownsController) {
-      _controller.dispose();
+      _controller.releaseResources();
     }
     super.dispose();
   }

@@ -237,7 +237,21 @@ import QuartzCore
         case "setQuality":
             handleSetQuality(call: call, result: result)
         case "getAvailableQualities":
-            result(availableQualities)
+            // First check if we have qualities in this view instance
+            if !availableQualities.isEmpty {
+                result(availableQualities)
+            } else if let controllerIdValue = controllerId,
+                      let cachedQualities = SharedPlayerManager.shared.getQualities(for: controllerIdValue) {
+                // If view instance is empty but cache has qualities, restore them
+                availableQualities = cachedQualities
+                if let cachedQualityLevels = SharedPlayerManager.shared.getQualityLevels(for: controllerIdValue) {
+                    qualityLevels = cachedQualityLevels
+                }
+                print("🔄 Restored \(cachedQualities.count) qualities from cache for controller \(controllerIdValue)")
+                result(cachedQualities)
+            } else {
+                result(availableQualities)
+            }
         case "enterFullScreen":
             handleEnterFullScreen(result: result)
         case "exitFullScreen":

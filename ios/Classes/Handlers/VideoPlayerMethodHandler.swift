@@ -33,18 +33,20 @@ extension VideoPlayerView {
 
         // Fetch qualities (async)
         VideoPlayerQualityHandler.fetchHLSQualities(from: url) { [weak self] qualities in
-            self?.qualityLevels = qualities
-            
+            guard let self = self else { return }
+
+            self.qualityLevels = qualities
+
             // Convert to Flutter format
             var result: [[String: Any]] = []
-            
+
             // Add auto quality option
             result.append([
                 "label": "Auto",
                 "url": qualities.first?.url ?? "",
                 "isAuto": true
             ])
-            
+
             // Add all available qualities
             result.append(contentsOf: qualities.map { quality in
                 [
@@ -56,9 +58,18 @@ extension VideoPlayerView {
                     "isAuto": false
                 ]
             })
-            
+
             // Send qualities to Flutter
-            self?.availableQualities = result
+            self.availableQualities = result
+
+            // Store in SharedPlayerManager if this is a shared player
+            if let controllerIdValue = self.controllerId {
+                SharedPlayerManager.shared.setQualities(
+                    for: controllerIdValue,
+                    qualities: result,
+                    qualityLevels: qualities
+                )
+            }
         }
 
         // --- Build player item ---
@@ -760,6 +771,9 @@ extension VideoPlayerView {
                 bufferedSeconds = CMTimeGetSeconds(bufferedEnd)
             }
 
+            // Check if currently buffering
+            let isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+
             // Only send event if values are valid (not NaN or Infinity)
             if positionSeconds.isFinite && !positionSeconds.isNaN &&
                durationSeconds.isFinite && !durationSeconds.isNaN && durationSeconds > 0 {
@@ -770,7 +784,8 @@ extension VideoPlayerView {
                 self.sendEvent("timeUpdate", data: [
                     "position": position,
                     "duration": totalDuration,
-                    "bufferedPosition": bufferedPosition
+                    "bufferedPosition": bufferedPosition,
+                    "isBuffering": isBuffering
                 ])
             }
         }

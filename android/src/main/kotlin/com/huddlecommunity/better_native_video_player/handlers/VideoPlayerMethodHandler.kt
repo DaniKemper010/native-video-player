@@ -168,6 +168,11 @@ class VideoPlayerMethodHandler(
             CoroutineScope(Dispatchers.Main).launch {
                 availableQualities = VideoPlayerQualityHandler.fetchHLSQualities(url)
                 Log.d(TAG, "Fetched ${availableQualities.size} qualities")
+
+                // Store in SharedPlayerManager if this is a shared player
+                if (controllerId != null) {
+                    SharedPlayerManager.setQualities(controllerId, availableQualities)
+                }
             }
         }
 
@@ -367,7 +372,22 @@ class VideoPlayerMethodHandler(
      * Returns available video qualities
      */
     private fun handleGetAvailableQualities(result: MethodChannel.Result) {
-        result.success(availableQualities)
+        // First check if we have qualities in this instance
+        if (availableQualities.isNotEmpty()) {
+            result.success(availableQualities)
+        } else if (controllerId != null) {
+            // If instance is empty but cache has qualities, restore them
+            val cachedQualities = SharedPlayerManager.getQualities(controllerId)
+            if (cachedQualities != null && cachedQualities.isNotEmpty()) {
+                availableQualities = cachedQualities
+                Log.d(TAG, "🔄 Restored ${cachedQualities.size} qualities from cache for controller $controllerId")
+                result.success(cachedQualities)
+            } else {
+                result.success(availableQualities)
+            }
+        } else {
+            result.success(availableQualities)
+        }
     }
 
     /**

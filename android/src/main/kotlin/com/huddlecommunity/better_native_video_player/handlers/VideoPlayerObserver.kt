@@ -41,11 +41,15 @@ class VideoPlayerObserver(
             // Get buffered position
             val bufferedPosition = player.bufferedPosition.toInt() // milliseconds
 
+            // Check if currently buffering
+            val isBuffering = player.playbackState == Player.STATE_BUFFERING
+
             if (duration > 0) {
                 eventHandler.sendEvent("timeUpdate", mapOf(
                     "position" to position,
                     "duration" to duration,
-                    "bufferedPosition" to bufferedPosition
+                    "bufferedPosition" to bufferedPosition,
+                    "isBuffering" to isBuffering
                 ))
             }
 

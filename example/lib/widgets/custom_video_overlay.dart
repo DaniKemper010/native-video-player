@@ -34,6 +34,7 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
   StreamSubscription<List<NativeVideoPlayerQuality>>? _qualitiesSubscription;
   StreamSubscription<Duration>? _bufferedPositionSubscription;
   StreamSubscription<bool>? _airPlayConnectedSubscription;
+  StreamSubscription<bool>? _pipAvailableSubscription;
 
   // Available playback speeds
   static const List<double> _availableSpeeds = [
@@ -61,6 +62,7 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     _duration = widget.controller.duration;
     _activityState = widget.controller.activityState;
     _qualities = widget.controller.qualities;
+    _isPipAvailable = widget.controller.isPipAvailable;
 
     // Subscribe to qualities stream
     _qualitiesSubscription = widget.controller.qualitiesStream.listen(
@@ -75,6 +77,12 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     _airPlayConnectedSubscription = widget.controller.isAirplayConnectedStream
         .listen(_handleAirPlayConnectionChanged);
 
+    // Subscribe to PiP availability stream
+    _pipAvailableSubscription = widget.controller.isPipAvailableStream.listen(
+      _handlePipAvailabilityChanged,
+    );
+
+    // Also check PiP availability once (for first load)
     _getPipAvailability();
 
     debugPrint(
@@ -132,6 +140,16 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     });
   }
 
+  void _handlePipAvailabilityChanged(bool isAvailable) {
+    if (!mounted) {
+      return;
+    }
+    debugPrint('PiP availability changed (from stream): $isAvailable');
+    setState(() {
+      _isPipAvailable = isAvailable;
+    });
+  }
+
   @override
   void dispose() {
     widget.controller.removeActivityListener(_handleActivityEvent);
@@ -142,6 +160,7 @@ class _CustomVideoOverlayState extends State<CustomVideoOverlay> {
     _qualitiesSubscription?.cancel();
     _bufferedPositionSubscription?.cancel();
     _airPlayConnectedSubscription?.cancel();
+    _pipAvailableSubscription?.cancel();
     super.dispose();
   }
 

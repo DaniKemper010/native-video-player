@@ -35,8 +35,8 @@ class VideoListScreenWithPlayers extends StatelessWidget {
         addAutomaticKeepAlives: false,
         itemBuilder: (context, index) {
           final video = videos[index];
-          // Use custom overlay for the first video to demonstrate inline custom controls
-          final useCustomOverlay = index == 0;
+          // Use custom overlay for the first video to demonstrate inline custom controls or last
+          final useCustomOverlay = index == 0 || index == videos.length - 1;
 
           return VideoPlayerCard(
             key: ValueKey(video.id),
