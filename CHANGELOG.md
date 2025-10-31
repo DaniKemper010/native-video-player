@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.15] - 2025-10-31
+
+### Added
+- **Buffering State Debounce**: Added 400ms debounce to buffering state changes to prevent UI flicker
+  - Buffering state is only emitted if it persists for more than 400ms
+  - Prevents brief buffering periods from causing UI flicker
+  - Automatically restores previous play/pause state when buffering completes
+  - Tracks last non-buffering state for accurate restoration
+
+### Improved
+- **Code Quality**: Removed all `debugPrint` statements from the package
+  - Cleaner production code without debug output
+  - Better performance by avoiding unnecessary string operations
+  - Error handling now uses silent catch blocks or returns appropriate defaults
+
+### Fixed
+- **Custom Overlay Not Working After Navigation**: Fixed critical issue where custom overlays would break after using `releaseResources()`
+  - `_overlayBuilder` is now preserved across `releaseResources()` calls
+  - Native controls properly hide/show based on overlay presence after reconnection
+  - Overlay builder persists like other state (`_state`, `_url`) for quick resumption
+  - Fixes issue where controls would be completely non-functional on second visit
+  - Only cleared on final `dispose()`, not on temporary `releaseResources()`
+
 ## [0.2.14] - 2025-10-31
 
 ### Added

@@ -162,17 +162,6 @@ class NativeVideoPlayerController {
   /// Flag to track if the controller has been disposed
   bool _isDisposed = false;
 
-  /// Flag to track if resources have been released (but not disposed)
-  bool __isReleased = false;
-
-  bool get _isReleased => __isReleased;
-  set _isReleased(bool value) {
-    debugPrint(
-      '🔄 _isReleased changed: $__isReleased -> $value (controller id: $id)',
-    );
-    __isReleased = value;
-  }
-
   /// Event channel subscriptions for each platform view
   final Map<int, StreamSubscription<dynamic>> _eventSubscriptions =
       <int, StreamSubscription<dynamic>>{};
@@ -186,6 +175,15 @@ class NativeVideoPlayerController {
 
   /// Whether the MainActivity PiP event listener has been set up
   static bool _pipEventListenerSetup = false;
+
+  /// Timer for buffering state debounce (400ms)
+  Timer? _bufferingDebounceTimer;
+
+  /// Track if we're currently in a buffering state (from native)
+  bool _isCurrentlyBuffering = false;
+
+  /// Track the last non-buffering activity state to restore after buffering
+  PlayerActivityState? _lastNonBufferingState;
 
   /// Activity event handlers (play, pause, buffering, etc.)
   final List<void Function(PlayerActivityEvent)> _activityEventHandlers =
@@ -289,6 +287,48 @@ class NativeVideoPlayerController {
     }
   }
 
+  /// Handles buffering state changes with 400ms debounce
+  ///
+  /// Only emits buffering state if it persists for more than 400ms.
+  /// This prevents flickering for brief buffering periods.
+  void _handleBufferingStateChange(bool isBuffering) {
+    // Track the native buffering state
+    _isCurrentlyBuffering = isBuffering;
+
+    if (isBuffering) {
+      // Store the current non-buffering state before transitioning to buffering
+      if (_state.activityState != PlayerActivityState.buffering) {
+        _lastNonBufferingState = _state.activityState;
+      }
+
+      // Cancel any existing timer
+      _bufferingDebounceTimer?.cancel();
+
+      // Start a 400ms timer - only emit buffering state if still buffering after 400ms
+      _bufferingDebounceTimer = Timer(const Duration(milliseconds: 400), () {
+        // Check if we're still buffering after 400ms
+        if (_isCurrentlyBuffering &&
+            _state.activityState != PlayerActivityState.buffering) {
+          // Update to buffering state
+          _updateState(
+            _state.copyWith(activityState: PlayerActivityState.buffering),
+          );
+        }
+      });
+    } else {
+      // Buffering stopped - cancel the timer and restore previous state
+      _bufferingDebounceTimer?.cancel();
+
+      // If we were showing buffering state, restore the previous state
+      if (_state.activityState == PlayerActivityState.buffering) {
+        // Restore the last non-buffering state
+        final restoredState =
+            _lastNonBufferingState ?? PlayerActivityState.playing;
+        _updateState(_state.copyWith(activityState: restoredState));
+      }
+    }
+  }
+
   /// Emits the current state to all streams
   ///
   /// This is useful when reconnecting after releaseResources() to ensure
@@ -339,15 +379,8 @@ class NativeVideoPlayerController {
   /// flags like PiP available, AirPlay available, and qualities are up to date
   Future<void> _refreshAvailabilityFlags() async {
     if (_methodChannel == null || _isDisposed) {
-      debugPrint(
-        '🔄 _refreshAvailabilityFlags: Skipped - methodChannel: ${_methodChannel != null}, isDisposed: $_isDisposed',
-      );
       return;
     }
-
-    debugPrint(
-      '🔄 _refreshAvailabilityFlags: Starting refresh for controller $id',
-    );
 
     try {
       // Re-fetch PiP availability
@@ -357,7 +390,6 @@ class NativeVideoPlayerController {
       if (!_isPipAvailableController.isClosed) {
         _isPipAvailableController.add(isPipAvailable);
       }
-      debugPrint('🔄 PiP available: $isPipAvailable');
 
       // Re-fetch AirPlay availability (iOS only)
       final isAirplayAvailable = await _methodChannel!.isAirPlayAvailable();
@@ -365,7 +397,6 @@ class NativeVideoPlayerController {
       if (!_isAirplayAvailableController.isClosed) {
         _isAirplayAvailableController.add(isAirplayAvailable);
       }
-      debugPrint('🔄 AirPlay available: $isAirplayAvailable');
 
       // Re-fetch available qualities if video was loaded before
       // Even if current state isn't "loaded", we may have qualities cached from before
@@ -374,9 +405,6 @@ class NativeVideoPlayerController {
         if (!_qualitiesController.isClosed) {
           _qualitiesController.add(_state.qualities);
         }
-        debugPrint(
-          '🔄 Qualities emitted from cache: ${_state.qualities.length} qualities',
-        );
       }
 
       // Also try to fetch fresh qualities from native side
@@ -387,19 +415,12 @@ class NativeVideoPlayerController {
           if (!_qualitiesController.isClosed) {
             _qualitiesController.add(qualities);
           }
-          debugPrint(
-            '🔄 Qualities refreshed from native: ${qualities.length} qualities',
-          );
-        } else {
-          debugPrint(
-            '🔄 No qualities returned from native (state: ${_state.activityState})',
-          );
         }
       } catch (e) {
-        debugPrint('🔄 Failed to fetch qualities from native: $e');
+        // Silently handle errors
       }
     } catch (e) {
-      debugPrint('🔄 _refreshAvailabilityFlags: Error - $e');
+      // Silently handle errors
     }
   }
 
@@ -574,12 +595,7 @@ class NativeVideoPlayerController {
     _updateMethodChannel(platformViewId);
 
     // If we're reconnecting after all platform views were disposed, refresh state
-    debugPrint(
-      '🔌 onPlatformViewCreated (id: $id, viewId: $platformViewId) - wasDisconnected: $wasDisconnected, _isReleased: $_isReleased',
-    );
     if (wasDisconnected) {
-      _isReleased = false;
-
       // Re-fetch availability flags from native side FIRST (wait for it to complete)
       // This ensures the state is up-to-date before we emit it
       await _refreshAvailabilityFlags();
@@ -587,7 +603,6 @@ class NativeVideoPlayerController {
       // Re-emit the current state to all streams to ensure listeners get the latest values
       // This is crucial when the widget tree rebuilds after navigation
       _emitCurrentState();
-      debugPrint('🔌 Reconnection complete - state re-emitted');
     }
 
     // IMPORTANT: Set up event channel for EVERY platform view
@@ -634,6 +649,13 @@ class NativeVideoPlayerController {
               _initializeCompleter != null &&
               !_initializeCompleter!.isCompleted) {
             _initializeCompleter!.complete();
+          }
+
+          // Update the last non-buffering state when we receive play/pause events
+          // This ensures we can restore to the correct state after buffering
+          if (activityEvent.state == PlayerActivityState.playing ||
+              activityEvent.state == PlayerActivityState.paused) {
+            _lastNonBufferingState = activityEvent.state;
           }
 
           // Update activity state
@@ -684,27 +706,17 @@ class NativeVideoPlayerController {
               final bool isBuffering =
                   (controlEvent.data!['isBuffering'] as bool?) ?? false;
 
-              // Update activity state based on buffering status
-              // Only update if buffering state changed to avoid unnecessary events
-              PlayerActivityState? newActivityState;
-              if (isBuffering &&
-                  _state.activityState != PlayerActivityState.buffering) {
-                newActivityState = PlayerActivityState.buffering;
-              } else if (!isBuffering &&
-                  _state.activityState == PlayerActivityState.buffering) {
-                // When buffering completes, restore to appropriate state
-                // The native side will send play/pause event, but we can infer from current state
-                // Keep the current activity state as-is, native events will update it
-                newActivityState = null;
-              }
+              // Handle buffering state with 400ms debounce
+              _handleBufferingStateChange(isBuffering);
 
+              // Update position, duration, and buffered position
+              // Don't update activityState here - it's handled by the debounced buffering logic
               _updateState(
                 _state.copyWith(
                   currentPosition: Duration(milliseconds: position),
                   duration: Duration(milliseconds: duration),
                   bufferedPosition: Duration(milliseconds: bufferedPosition),
                   controlState: controlEvent.state,
-                  activityState: newActivityState,
                 ),
               );
             }
@@ -906,7 +918,6 @@ class NativeVideoPlayerController {
   /// **Parameters:**
   /// - platformViewId: The ID of the platform view being disposed
   void onPlatformViewDisposed(int platformViewId) {
-    debugPrint('🔌 onPlatformViewDisposed (id: $id, viewId: $platformViewId)');
     _platformViewIds.remove(platformViewId);
     _platformViewContexts.remove(platformViewId);
 
@@ -922,14 +933,6 @@ class NativeVideoPlayerController {
       // Use the most recent remaining view
       final newPrimaryViewId = _platformViewIds.last;
       _updateMethodChannel(newPrimaryViewId);
-    }
-
-    // If all platform views are gone, mark as released so next reconnection triggers refresh
-    if (_platformViewIds.isEmpty) {
-      debugPrint(
-        '🔌 All platform views disposed - marking as released (id: $id)',
-      );
-      _isReleased = true;
     }
   }
 
@@ -1262,9 +1265,6 @@ class NativeVideoPlayerController {
   /// }
   /// ```
   Future<void> releaseResources() async {
-    // Mark as released so we can detect reconnection later
-    _isReleased = true;
-
     // Pause playback
     await pause();
 
@@ -1284,6 +1284,10 @@ class NativeVideoPlayerController {
     await _pipEventSubscription?.cancel();
     _pipEventSubscription = null;
 
+    // Cancel buffering debounce timer
+    _bufferingDebounceTimer?.cancel();
+    _bufferingDebounceTimer = null;
+
     // Clear all event handlers
     _activityEventHandlers.clear();
     _controlEventHandlers.clear();
@@ -1299,10 +1303,11 @@ class NativeVideoPlayerController {
     _methodChannel = null;
     _initializeCompleter = null;
 
-    // Clear overlay and fullscreen references
-    _overlayBuilder = null;
+    // Clear fullscreen callback (but keep overlay builder)
     _dartFullscreenCloseCallback = null;
 
+    // Note: We do NOT clear _overlayBuilder so it persists across releases
+    // The widget will call setOverlayBuilder() again when reconnecting
     // Note: We do NOT clear _state and _url so we can resume playback
     // Note: We do NOT call _methodChannel.dispose() to keep native player alive
     // Note: We do NOT close stream controllers so they can continue to be used
@@ -1356,6 +1361,10 @@ class NativeVideoPlayerController {
     // Cancel PiP event subscription (Android only)
     await _pipEventSubscription?.cancel();
     _pipEventSubscription = null;
+
+    // Cancel buffering debounce timer
+    _bufferingDebounceTimer?.cancel();
+    _bufferingDebounceTimer = null;
 
     // Clear all event handlers
     _activityEventHandlers.clear();
