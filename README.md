@@ -62,7 +62,6 @@ Add the following to your `Info.plist`:
 <key>UIBackgroundModes</key>
 <array>
     <string>audio</string>
-    <string>picture-in-picture</string>
 </array>
 ```
 
