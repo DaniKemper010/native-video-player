@@ -36,16 +36,15 @@ class VideoListScreenWithPlayers extends StatelessWidget {
         itemBuilder: (context, index) {
           final video = videos[index];
           // Use custom overlay for the first video to demonstrate inline custom controls or last
-          final useCustomOverlay = index == 0 || index == videos.length - 1;
+          final notUseCustomOverlay = index == 1;
 
           return VideoPlayerCard(
             key: ValueKey(video.id),
             video: video,
-            useCustomOverlay: useCustomOverlay,
+            useCustomOverlay: !notUseCustomOverlay,
             shouldShowVideo:
-                index !=
-                videos.length -
-                    1, // Show video only for the last item to save resources
+                index <
+                videos.length - 2, // Show video only for the last 2 items
             onTap: (controller) {
               Navigator.push(
                 context,
@@ -53,7 +52,7 @@ class VideoListScreenWithPlayers extends StatelessWidget {
                   builder: (context) => VideoDetailScreenFull(
                     video: video,
                     controller: controller,
-                    useCustomOverlay: useCustomOverlay,
+                    useCustomOverlay: !notUseCustomOverlay,
                   ),
                 ),
               );

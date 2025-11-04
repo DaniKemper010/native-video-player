@@ -55,15 +55,42 @@ class NativeVideoPlayerController {
 
   /// Initialize the controller and wait for the platform view to be created
   Future<void> initialize() async {
-    if (_state.activityState.isInitialized) {
+    if (_isInitialized) {
       return;
     }
+
+    // If already initializing, wait for the existing initialization to complete
+    if (_isInitializing && _initializeCompleter != null) {
+      await _initializeCompleter!.future;
+      return;
+    }
+
+    // If platform view is already created and method channel exists, mark as initialized immediately
+    if (_methodChannel != null && _platformViewIds.isNotEmpty) {
+      _isInitialized = true;
+      _updateState(
+        _state.copyWith(activityState: PlayerActivityState.initialized),
+      );
+      return;
+    }
+
+    // Mark as initializing
+    _isInitializing = true;
+
+    // Set state to initializing immediately
+    _updateState(
+      _state.copyWith(activityState: PlayerActivityState.initializing),
+    );
 
     // Create a completer that will be completed when the platform view is created
     _initializeCompleter = Completer<void>();
 
     // Wait for the platform view to be created
     await _initializeCompleter!.future;
+
+    // Mark as initialized
+    _isInitialized = true;
+    _isInitializing = false;
 
     _updateState(
       _state.copyWith(activityState: PlayerActivityState.initialized),
@@ -159,6 +186,12 @@ class NativeVideoPlayerController {
   /// Completer to wait for initialization to complete
   Completer<void>? _initializeCompleter;
 
+  /// Flag to track if the controller has been initialized
+  bool _isInitialized = false;
+
+  /// Flag to track if initialization is currently in progress
+  bool _isInitializing = false;
+
   /// Flag to track if the controller has been disposed
   bool _isDisposed = false;
 
@@ -238,6 +271,43 @@ class NativeVideoPlayerController {
     if (oldState.duration != newState.duration) {
       if (!_durationController.isClosed) {
         _durationController.add(newState.duration);
+      }
+
+      // When duration changes from 0 to non-zero, notify all listeners with current state
+      // This ensures listeners added before duration was available receive the state
+      if (oldState.duration == Duration.zero &&
+          newState.duration != Duration.zero) {
+        debugPrint(
+          '🎯 Duration became available! Notifying all ${_controlEventHandlers.length} control listeners',
+        );
+
+        // Notify all control listeners with time update event
+        if (_controlEventHandlers.isNotEmpty) {
+          final currentControlEvent = PlayerControlEvent(
+            state: PlayerControlState.timeUpdated,
+            data: {
+              'position': newState.currentPosition.inMilliseconds,
+              'duration': newState.duration.inMilliseconds,
+              'bufferedPosition': newState.bufferedPosition.inMilliseconds,
+              'isBuffering':
+                  newState.activityState == PlayerActivityState.buffering,
+            },
+          );
+          for (final handler in _controlEventHandlers) {
+            handler(currentControlEvent);
+          }
+        }
+
+        // Also notify activity listeners
+        if (_activityEventHandlers.isNotEmpty) {
+          final currentActivityEvent = PlayerActivityEvent(
+            state: newState.activityState,
+            data: null,
+          );
+          for (final handler in _activityEventHandlers) {
+            handler(currentActivityEvent);
+          }
+        }
       }
     }
     if (oldState.activityState != newState.activityState) {
@@ -428,6 +498,29 @@ class NativeVideoPlayerController {
   void addActivityListener(void Function(PlayerActivityEvent) listener) {
     if (!_activityEventHandlers.contains(listener)) {
       _activityEventHandlers.add(listener);
+      debugPrint(
+        '👂 Added activity listener. Total listeners: ${_activityEventHandlers.length}',
+      );
+
+      // Immediately notify the new listener of the current state
+      // This ensures listeners added after initialization receive the current state
+      // We check if we have valid state rather than just _isInitialized
+      if (!_isDisposed && _state.duration != Duration.zero) {
+        debugPrint(
+          '🔔 Emitting current activity state to new listener: ${_state.activityState}',
+        );
+        final currentActivityEvent = PlayerActivityEvent(
+          state: _state.activityState,
+          data: null,
+        );
+        listener(currentActivityEvent);
+      } else {
+        debugPrint(
+          '🔕 NOT emitting activity to new listener: _isDisposed=$_isDisposed, duration=${_state.duration}',
+        );
+      }
+    } else {
+      debugPrint('⚠️ Activity listener already exists, not adding duplicate');
     }
   }
 
@@ -439,6 +532,48 @@ class NativeVideoPlayerController {
   void addControlListener(void Function(PlayerControlEvent) listener) {
     if (!_controlEventHandlers.contains(listener)) {
       _controlEventHandlers.add(listener);
+      debugPrint(
+        '👂 Added control listener. Total listeners: ${_controlEventHandlers.length}',
+      );
+
+      // Immediately notify the new listener with a time update event containing current state
+      // This ensures listeners added after initialization receive the current state
+      // We check if we have valid state data (duration > 0) rather than just _isInitialized
+      // because _isInitialized may be false temporarily during reconnection
+      if (!_isDisposed && _state.duration != Duration.zero) {
+        debugPrint(
+          '🔔 Emitting current state to new control listener: position=${_state.currentPosition}, duration=${_state.duration}',
+        );
+        final currentControlEvent = PlayerControlEvent(
+          state: PlayerControlState.timeUpdated,
+          data: {
+            'position': _state.currentPosition.inMilliseconds,
+            'duration': _state.duration.inMilliseconds,
+            'bufferedPosition': _state.bufferedPosition.inMilliseconds,
+            'isBuffering':
+                _state.activityState == PlayerActivityState.buffering,
+          },
+        );
+        listener(currentControlEvent);
+
+        // Also notify about qualities if available
+        if (_state.qualities.isNotEmpty) {
+          final qualityEvent = PlayerControlEvent(
+            state: PlayerControlState.qualityChanged,
+            data: {
+              'qualities': _state.qualities.map((q) => q.toMap()).toList(),
+              'quality': _state.qualities.first.toMap(),
+            },
+          );
+          listener(qualityEvent);
+        }
+      } else {
+        debugPrint(
+          '🔕 NOT emitting to new control listener: _isDisposed=$_isDisposed, duration=${_state.duration}, _isInitialized=$_isInitialized',
+        );
+      }
+    } else {
+      debugPrint('⚠️ Control listener already exists, not adding duplicate');
     }
   }
 
@@ -452,6 +587,9 @@ class NativeVideoPlayerController {
 
   /// Available video qualities (HLS variants)
   List<NativeVideoPlayerQuality> get qualities => _state.qualities;
+
+  /// Returns whether the controller has been initialized
+  bool get isInitialized => _isInitialized;
 
   /// Returns whether the video is currently in fullscreen mode
   bool get isFullScreen => _state.isFullScreen;
@@ -594,15 +732,56 @@ class NativeVideoPlayerController {
     // This ensures commands go to the active view
     _updateMethodChannel(platformViewId);
 
-    // If we're reconnecting after all platform views were disposed, refresh state
+    // If we're reconnecting after all platform views were disposed, refresh availability flags
     if (wasDisconnected) {
       // Re-fetch availability flags from native side FIRST (wait for it to complete)
       // This ensures the state is up-to-date before we emit it
       await _refreshAvailabilityFlags();
 
-      // Re-emit the current state to all streams to ensure listeners get the latest values
-      // This is crucial when the widget tree rebuilds after navigation
-      _emitCurrentState();
+      // Ensure native controls are hidden if we have a custom overlay
+      // This is critical when rapidly navigating - the overlay builder persists
+      // but native controls might not have been hidden during the reconnection
+      if (_hasCustomOverlay && _methodChannel != null) {
+        await setShowNativeControls(false);
+      }
+    }
+
+    _emitCurrentState();
+
+    // ALWAYS notify all event handler listeners about the current state
+    // This ensures listeners added via add*Listener methods receive the current state
+
+    // Notify AirPlay availability listeners
+    for (final handler in _airPlayAvailabilityHandlers) {
+      handler(_state.isAirplayAvailable);
+    }
+
+    // Notify AirPlay connection listeners
+    for (final handler in _airPlayConnectionHandlers) {
+      handler(_state.isAirplayConnected);
+    }
+
+    // Notify activity event listeners with the current activity state
+    if (_activityEventHandlers.isNotEmpty) {
+      final currentActivityEvent = PlayerActivityEvent(
+        state: _state.activityState,
+        data: null,
+      );
+      for (final handler in _activityEventHandlers) {
+        handler(currentActivityEvent);
+      }
+    }
+
+    // Notify control event listeners if there's a current control state
+    if (_controlEventHandlers.isNotEmpty &&
+        _state.controlState != PlayerControlState.none) {
+      final currentControlEvent = PlayerControlEvent(
+        state: _state.controlState,
+        data: null,
+      );
+      for (final handler in _controlEventHandlers) {
+        handler(currentControlEvent);
+      }
     }
 
     // IMPORTANT: Set up event channel for EVERY platform view
@@ -648,6 +827,7 @@ class NativeVideoPlayerController {
               activityEvent.state == PlayerActivityState.initialized &&
               _initializeCompleter != null &&
               !_initializeCompleter!.isCompleted) {
+            _isInitialized = true;
             _initializeCompleter!.complete();
           }
 
@@ -709,12 +889,20 @@ class NativeVideoPlayerController {
               // Handle buffering state with 400ms debounce
               _handleBufferingStateChange(isBuffering);
 
+              // Protect against duration being overwritten with 0 during AirPlay transitions
+              // If we have a valid duration stored and the new duration is 0, keep the old duration
+              final Duration newDuration = duration > 0
+                  ? Duration(milliseconds: duration)
+                  : (_state.duration != Duration.zero
+                        ? _state.duration
+                        : Duration.zero);
+
               // Update position, duration, and buffered position
               // Don't update activityState here - it's handled by the debounced buffering logic
               _updateState(
                 _state.copyWith(
                   currentPosition: Duration(milliseconds: position),
-                  duration: Duration(milliseconds: duration),
+                  duration: newDuration,
                   bufferedPosition: Duration(milliseconds: bufferedPosition),
                   controlState: controlEvent.state,
                 ),
@@ -768,6 +956,14 @@ class NativeVideoPlayerController {
             final bool isConnected =
                 controlEvent.state == PlayerControlState.airPlayConnected;
             _updateState(_state.copyWith(isAirplayConnected: isConnected));
+
+            // When AirPlay connects, the native player might reset duration temporarily
+            // Re-emit the current duration to ensure it's not lost
+            if (isConnected && _state.duration != Duration.zero) {
+              if (!_durationController.isClosed) {
+                _durationController.add(_state.duration);
+              }
+            }
           }
 
           // Update control state for other control events
@@ -874,6 +1070,12 @@ class NativeVideoPlayerController {
   void addAirPlayAvailabilityListener(void Function(bool) listener) {
     if (!_airPlayAvailabilityHandlers.contains(listener)) {
       _airPlayAvailabilityHandlers.add(listener);
+
+      // Immediately notify the new listener of the current state
+      // This ensures listeners added after initialization receive the current state
+      if (_isInitialized && !_isDisposed) {
+        listener(_state.isAirplayAvailable);
+      }
     }
   }
 
@@ -885,6 +1087,12 @@ class NativeVideoPlayerController {
   void addAirPlayConnectionListener(void Function(bool) listener) {
     if (!_airPlayConnectionHandlers.contains(listener)) {
       _airPlayConnectionHandlers.add(listener);
+
+      // Immediately notify the new listener of the current state
+      // This ensures listeners added after initialization receive the current state
+      if (_isInitialized && !_isDisposed) {
+        listener(_state.isAirplayConnected);
+      }
     }
   }
 

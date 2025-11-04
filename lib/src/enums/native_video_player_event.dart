@@ -122,6 +122,7 @@ class PlayerControlEvent {
             ? PlayerControlState.fullscreenEntered
             : PlayerControlState.fullscreenExited;
       case 'timeUpdate':
+      case 'timeUpdated': // Native side sends 'timeUpdated' in some cases
         return PlayerControlState.timeUpdated;
       default:
         return PlayerControlState.none;

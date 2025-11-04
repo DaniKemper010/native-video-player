@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.16] - 2025-11-04
+
+### Improved
+- **Enhanced Initialization Handling**: Improved controller initialization with better state tracking
+  - Added `_isInitialized` and `_isInitializing` flags to prevent duplicate initialization
+  - Initialize completer now waits properly for existing initialization to complete
+  - Early return when platform view is already created with method channel
+  - Added `isInitialized` getter to check initialization status programmatically
+
+- **Immediate State Emission for New Listeners**: Event listeners now receive current state immediately upon registration
+  - New activity listeners immediately receive current activity state (playing, paused, etc.)
+  - New control listeners immediately receive current position, duration, and buffer state
+  - Eliminates the need to wait for the next event when adding listeners after initialization
+  - Includes debug logging to track listener registration and state emission
+
+- **Duration Persistence During AirPlay**: Fixed duration being lost during AirPlay transitions
+  - Duration is now protected from being overwritten with 0 during AirPlay connection/disconnection
+  - Duration controller explicitly re-emits when AirPlay connects to ensure UI stays updated
+  - Prevents progress bars and time displays from temporarily showing 0:00 during transitions
+
+- **Unified Event Name Handling**: Added support for both 'timeUpdate' and 'timeUpdated' event names
+  - Native platforms can now use either naming convention
+  - Improves compatibility and reduces potential event parsing issues
+
+### Fixed
+- **Duration Lost During Navigation**: Fixed issue where duration would be temporarily lost when listeners are added after player initialization
+  - Controller now notifies all listeners with current state when duration becomes available
+  - Ensures UI components added dynamically receive accurate state information
+
 ## [0.2.15] - 2025-10-31
 
 ### Added
