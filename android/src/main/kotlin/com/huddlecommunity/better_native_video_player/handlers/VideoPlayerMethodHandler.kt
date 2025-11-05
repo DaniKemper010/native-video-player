@@ -18,6 +18,7 @@ import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.huddlecommunity.better_native_video_player.manager.SharedPlayerManager
 
 /**
  * Handles method calls from Flutter for video player control
@@ -398,7 +399,7 @@ class VideoPlayerMethodHandler(
 
         // Remove from shared manager if this is a shared player
         if (controllerId != null) {
-            com.huddlecommunity.better_native_video_player.manager.SharedPlayerManager.removePlayer(context, controllerId)
+            SharedPlayerManager.removePlayer(context, controllerId)
             Log.d(TAG, "Removed shared player for controller ID: $controllerId")
         }
 
