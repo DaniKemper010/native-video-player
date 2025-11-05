@@ -29,8 +29,11 @@ extension VideoPlayerView: AVPlayerViewControllerDelegate {
         }
 
         sendEvent("pipStop", data: ["isPictureInPicture": false])
+
+        // Re-emit all current states after exiting PiP to ensure UI is in sync
+        self.emitCurrentState()
     }
-    
+
     public func playerViewController(_ playerViewController: AVPlayerViewController, failedToStartPictureInPictureWithError error: Error) {
         print("❌ PiP failed to start (AVPlayerViewController): \(error.localizedDescription)")
     }
@@ -119,8 +122,11 @@ extension VideoPlayerView: AVPictureInPictureControllerDelegate {
         }
 
         sendEvent("pipStop", data: ["isPictureInPicture": false])
+
+        // Re-emit all current states after exiting PiP to ensure UI is in sync
+        self.emitCurrentState()
     }
-    
+
     public func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         print("❌ Custom PiP controller failed to start: \(error.localizedDescription)")
         

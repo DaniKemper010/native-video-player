@@ -924,6 +924,43 @@ class VideoPlayerView(
         // Send pipStop event to Flutter to update controller state and show custom overlay
         eventHandler.sendEvent("pipStop", mapOf("isPictureInPicture" to false))
         Log.d(TAG, "Sent pipStop event to Flutter")
+
+        // Re-emit all current states after exiting PiP to ensure UI is in sync
+        emitCurrentState()
+    }
+
+    /**
+     * Emits all current player states to ensure UI is in sync
+     * This is useful after events like exiting PiP where the UI needs to refresh
+     */
+    private fun emitCurrentState() {
+        Log.d(TAG, "Emitting current state after PiP exit")
+
+        // Emit current time and duration
+        val currentPosition = player.currentPosition
+        val duration = player.duration
+
+        if (duration > 0) {
+            // Get buffered position
+            val bufferedPosition = player.bufferedPosition
+
+            eventHandler.sendEvent("timeUpdate", mapOf(
+                "position" to currentPosition.toInt(),
+                "duration" to duration.toInt(),
+                "bufferedPosition" to bufferedPosition.toInt(),
+                "isBuffering" to (player.playbackState == ExoPlayer.STATE_BUFFERING)
+            ))
+            Log.d(TAG, "Emitted timeUpdate with duration: ${duration}ms")
+        }
+
+        // Emit current playback state
+        if (player.isPlaying) {
+            Log.d(TAG, "Emitting play state")
+            eventHandler.sendEvent("play")
+        } else if (player.playbackState != ExoPlayer.STATE_IDLE) {
+            Log.d(TAG, "Emitting pause state")
+            eventHandler.sendEvent("pause")
+        }
     }
 
     /**

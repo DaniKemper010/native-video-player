@@ -84,6 +84,50 @@ Add the following to your `Info.plist`:
 
 The plugin automatically configures the required permissions and services in its manifest.
 
+**For Picture-in-Picture support**, you must add the following to your `MainActivity.kt`:
+
+```kotlin
+import android.content.res.Configuration
+import android.util.Log
+import com.huddlecommunity.better_native_video_player.VideoPlayerView
+
+class MainActivity: FlutterActivity() {
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        Log.d(TAG, "PiP mode changed: $isInPictureInPictureMode")
+
+        // Restore controls and fullscreen state when exiting PiP
+        if (!isInPictureInPictureMode) {
+            try {
+                val allViews = com.huddlecommunity.better_native_video_player.NativeVideoPlayerPlugin.getAllViews()
+                allViews.forEach { view: VideoPlayerView ->
+                    view.onExitPictureInPicture()
+                }
+                Log.d(TAG, "Restored controls for ${allViews.size} video players")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error restoring controls: ${e.message}", e)
+            }
+        }
+    }
+}
+```
+
+**Why is this required?**
+
+Android requires your MainActivity to notify the plugin when the user exits PiP mode (by pressing back or expanding the PiP window). Without this callback:
+- The video will stay in fullscreen mode even after exiting PiP
+- Custom overlay controls won't reappear
+- The video player will be in an inconsistent state
+
+**Note:** This callback cannot be included in the plugin itself because it must be in your app's MainActivity to receive Android system callbacks.
+
 ## Usage
 
 ### Basic Example

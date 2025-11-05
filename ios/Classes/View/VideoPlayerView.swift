@@ -285,6 +285,59 @@ import QuartzCore
         eventSink?(event)
     }
 
+    /// Emits all current player states to ensure UI is in sync
+    /// This is useful after events like exiting PiP where the UI needs to refresh
+    public func emitCurrentState() {
+        guard let player = player, let currentItem = player.currentItem else {
+            print("[\(channelName)] No player or item available to emit state")
+            return
+        }
+
+        print("[\(channelName)] Emitting current state after PiP exit")
+
+        // Emit current time and duration
+        let currentTimeSeconds = CMTimeGetSeconds(player.currentTime())
+        let durationSeconds = CMTimeGetSeconds(currentItem.duration)
+
+        if !currentTimeSeconds.isNaN && !durationSeconds.isNaN && durationSeconds > 0 {
+            let duration = Int(durationSeconds * 1000)
+            let position = Int(currentTimeSeconds * 1000)
+
+            // Get buffered position
+            var bufferedSeconds = 0.0
+            let timeRanges = currentItem.loadedTimeRanges
+            if !timeRanges.isEmpty {
+                let bufferedRange = timeRanges.last!.timeRangeValue
+                let bufferedEnd = CMTimeAdd(bufferedRange.start, bufferedRange.duration)
+                bufferedSeconds = CMTimeGetSeconds(bufferedEnd)
+            }
+            let bufferedPosition = Int(bufferedSeconds * 1000)
+
+            sendEvent("timeUpdate", data: [
+                "position": position,
+                "duration": duration,
+                "bufferedPosition": bufferedPosition,
+                "isBuffering": player.timeControlStatus == .waitingToPlayAtSpecifiedRate
+            ])
+            print("[\(channelName)] Emitted timeUpdate with duration: \(duration)ms")
+        }
+
+        // Emit current playback state
+        switch player.timeControlStatus {
+        case .playing:
+            print("[\(channelName)] Emitting play state")
+            sendEvent("play")
+        case .paused:
+            print("[\(channelName)] Emitting pause state")
+            sendEvent("pause")
+        case .waitingToPlayAtSpecifiedRate:
+            print("[\(channelName)] Emitting buffering state")
+            sendEvent("buffering")
+        @unknown default:
+            break
+        }
+    }
+
     // MARK: - FlutterStreamHandler
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
         print("[\(channelName)] Event channel listener attached")

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.18] - 2025-11-05
+
+### Fixed
+- **State Restoration After Exiting PiP**: Fixed issue where player state would not be properly restored after exiting Picture-in-Picture mode
+  - Added `emitCurrentState()` method on both iOS and Android to re-emit all player states after PiP exit
+  - Ensures UI components receive accurate position, duration, buffered position, and playback state
+  - Prevents UI from showing stale or incorrect state after returning from PiP mode
+  - Applies to both platforms when user exits PiP via system gesture or button
+
+### Improved
+- **Code Quality (Flutter)**: Improved code formatting across `NativeVideoPlayerController`
+  - Better line formatting and consistency throughout the codebase
+  - Enhanced readability with improved code organization
+  - Removed unnecessary line breaks for cleaner code structure
+
+### Documentation
+- **Android PiP Setup**: Added comprehensive documentation for required MainActivity PiP callback
+  - Documented why MainActivity callback is necessary for proper PiP state restoration
+  - Added complete code example for MainActivity implementation
+  - Clarified consequences of not implementing the callback
+
 ## [0.2.17] - 2025-11-05
 
 ### Improved
