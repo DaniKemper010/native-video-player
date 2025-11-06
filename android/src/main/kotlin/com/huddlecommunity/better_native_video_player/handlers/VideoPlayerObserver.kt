@@ -95,6 +95,9 @@ class VideoPlayerObserver(
                 }
             }
             Player.STATE_ENDED -> {
+                // Reset video to the beginning and pause
+                player.seekTo(0)
+                player.pause()
                 eventHandler.sendEvent("completed")
             }
         }

@@ -189,6 +189,9 @@ extension VideoPlayerView {
     }
 
     @objc func videoDidEnd() {
+        // Reset video to the beginning and pause
+        player?.seek(to: .zero)
+        player?.pause()
         sendEvent("completed")
     }
 
