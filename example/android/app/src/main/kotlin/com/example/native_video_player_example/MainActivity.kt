@@ -13,9 +13,16 @@ class MainActivity : FlutterActivity() {
     private val TAG = "MainActivity"
     private var pipEventChannel: EventChannel? = null
     private var pipEventSink: EventChannel.EventSink? = null
+    private var isInPipMode = false
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        Log.d(TAG, "MainActivity onCreate called")
+    }
 
     override fun onPostResume() {
         super.onPostResume()
+        Log.d(TAG, "onPostResume called")
         setupPipEventChannel()
     }
 
@@ -38,7 +45,10 @@ class MainActivity : FlutterActivity() {
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        Log.d(TAG, "PiP mode changed: $isInPictureInPictureMode")
+        Log.d(TAG, "⚠️ PiP mode changed: $isInPictureInPictureMode")
+
+        // Update PiP state
+        isInPipMode = isInPictureInPictureMode
 
         // Restore ExoPlayer controls when exiting PiP
         if (!isInPictureInPictureMode) {
@@ -62,28 +72,42 @@ class MainActivity : FlutterActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        Log.d(TAG, "onUserLeaveHint called - user pressed home button")
+        Log.d(TAG, "⚠️ onUserLeaveHint called - user pressed home button")
 
-        // Note: Automatic PiP on home button is disabled because it minimizes the entire app
-        // Users should use the PiP button in the UI to enter PiP mode manually
-        // This keeps the app usable while video is in PiP
+        tryEnterAutoPip("onUserLeaveHint")
+    }
 
-        // Uncomment below to enable automatic PiP when home button is pressed:
-        /*
+    override fun onStop() {
+        Log.d(TAG, "⚠️ onStop called - isInPipMode: $isInPipMode, isFinishing: $isFinishing")
+
+        // If onUserLeaveHint wasn't called (common on some Android versions),
+        // try to enter PiP here when the app goes to background
+        if (!isInPipMode && !isFinishing) {
+            Log.d(TAG, "⚠️ onStop: Attempting PiP as onUserLeaveHint may not have been called")
+            tryEnterAutoPip("onStop")
+        }
+
+        super.onStop()
+    }
+
+    private fun tryEnterAutoPip(calledFrom: String) {
+        Log.d(TAG, "⚠️ tryEnterAutoPip called from: $calledFrom")
+
+        // Automatically enter PiP mode when home button is pressed if video is playing
         try {
             val allViews = com.huddlecommunity.better_native_video_player.NativeVideoPlayerPlugin.getAllViews()
-            Log.d(TAG, "Found ${allViews.size} registered video players")
+            Log.d(TAG, "⚠️ Found ${allViews.size} registered video players")
 
             for (view in allViews) {
                 if (view.tryAutoPictureInPicture()) {
-                    Log.d(TAG, "Successfully entered auto PiP mode")
+                    Log.d(TAG, "⚠️ Successfully entered auto PiP mode from $calledFrom")
+                    isInPipMode = true
                     return // Only enter PiP for the first playing video
                 }
             }
-            Log.d(TAG, "No video entered auto PiP mode")
+            Log.d(TAG, "⚠️ No video entered auto PiP mode from $calledFrom")
         } catch (e: Exception) {
-            Log.e(TAG, "Error trying auto PiP: ${e.message}", e)
+            Log.e(TAG, "⚠️ Error trying auto PiP from $calledFrom: ${e.message}", e)
         }
-        */
     }
 }

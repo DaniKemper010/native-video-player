@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.20] - 2025-11-06
+
+### Improved
+- **Android Auto Picture-in-Picture**: Major enhancements to automatic PiP mode when pressing home button
+  - Unified PiP entry logic with single `enterPictureInPictureInternal()` method that handles both manual and automatic triggers
+  - Removed `setAutoEnterEnabled(true)` which was bypassing custom PiP logic and `onUserLeaveHint` callback
+  - Improved fullscreen transition before PiP entry - now enters fullscreen silently without sending intermediate events
+  - Added `onStop()` lifecycle method in example MainActivity to catch auto PiP on devices where `onUserLeaveHint` isn't reliably called
+  - Better source rect calculation for PiP window positioning when transitioning from fullscreen
+  - Enhanced logging throughout PiP flow for better debugging
+  - Auto PiP now enabled by default in example app with proper state tracking
+
+- **Android MainActivity Configuration**: Cleaned up example app MainActivity
+  - Removed `android:taskAffinity=""` from AndroidManifest which could cause activity lifecycle issues
+  - Added `isInPipMode` flag to track PiP state across lifecycle methods
+  - Created unified `tryEnterAutoPip()` method called from both `onUserLeaveHint` and `onStop`
+  - Improved PiP state restoration with immediate event emission after exiting PiP
+  - Enhanced logging with warning emojis for better visibility in logcat
+
+### Fixed
+- **Android 12+ PiP Behavior**: Fixed `setAutoEnterEnabled` causing Android to automatically enter PiP without proper custom logic
+  - Android's auto-enter was bypassing the plugin's fullscreen transition and state management
+  - Now uses only `setSeamlessResizeEnabled` for smooth transitions while maintaining control over PiP entry
+  - Ensures proper event flow and state synchronization when entering PiP
+
+- **Auto PiP Reliability**: Fixed auto PiP not working reliably on all Android devices
+  - Added fallback to `onStop()` when `onUserLeaveHint()` isn't called (device-specific behavior)
+  - Better detection of home button press across different Android versions and manufacturers
+  - Prevents entering PiP when activity is finishing (back button vs home button)
+
 ## [0.2.19] - 2025-11-06
 
 ### Improved
