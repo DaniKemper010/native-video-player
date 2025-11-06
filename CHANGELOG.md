@@ -5,12 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.20] - 2025-11-06
-
-### Improved
-- **Android State Restoration After Exiting PiP**: Enhanced state synchronization when exiting Picture-in-Picture mode
-  - Prevents UI from displaying stale state after returning from PiP mode on Android
-
 ## [0.2.19] - 2025-11-06
 
 ### Improved
@@ -19,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Player automatically pauses after completion instead of staying in ended state
   - Applies to both iOS (AVPlayer) and Android (ExoPlayer) platforms
   - Ensures consistent behavior across platforms for replay scenarios
+
+- **Android State Restoration After Exiting PiP**: Enhanced state synchronization when exiting Picture-in-Picture mode
+  - Added `emitCurrentState()` method to re-emit all player states after PiP exit
+  - Ensures UI components receive accurate position, duration, buffered position, and playback state
+  - Automatically emits current timeUpdate with buffering state
+  - Emits current play/pause state to synchronize UI controls
+  - Prevents UI from displaying stale state after returning from PiP mode on Android
 
 ## [0.2.18] - 2025-11-05
 
