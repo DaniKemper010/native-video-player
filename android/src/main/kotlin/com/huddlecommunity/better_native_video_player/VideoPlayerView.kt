@@ -89,6 +89,9 @@ class VideoPlayerView(
     // HDR setting
     private var enableHDR: Boolean = false
 
+    // Layout change listener for updating PiP params
+    private var pipLayoutChangeListener: View.OnLayoutChangeListener? = null
+
 
     init {
         Log.d(TAG, "Creating VideoPlayerView with id: $viewId")
@@ -306,6 +309,12 @@ class VideoPlayerView(
             SharedPlayerManager.registerView(controllerId, viewId) {
                 reconnectSurface()
             }
+        }
+
+        // Set up layout change listener to update PiP params when view bounds change
+        // This prevents Android from showing the wrong area in PiP after layout changes
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            setupPipLayoutListener()
         }
 
         // Setup event channel
@@ -647,6 +656,61 @@ class VideoPlayerView(
     }
 
     /**
+     * Sets up a layout change listener to continuously update PiP params
+     * This ensures Android always knows the correct bounds of the video player
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun setupPipLayoutListener() {
+        pipLayoutChangeListener = View.OnLayoutChangeListener { v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            // Only update if we're in PiP mode or if bounds actually changed
+            if (left != oldLeft || top != oldTop || right != oldRight || bottom != oldBottom) {
+                updatePictureInPictureParams()
+            }
+        }
+        playerView.addOnLayoutChangeListener(pipLayoutChangeListener)
+        Log.d(TAG, "PiP layout change listener set up")
+    }
+
+    /**
+     * Updates the Activity's PiP params with the current player view bounds
+     * This should be called whenever the player view layout changes
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun updatePictureInPictureParams() {
+        val pluginActivity = NativeVideoPlayerPlugin.getActivity()
+        val activity = pluginActivity ?: getActivity(context)
+
+        if (activity != null && !isDisposed) {
+            val aspectRatio = player.videoSize.let { size ->
+                if (size.width > 0 && size.height > 0) {
+                    android.util.Rational(size.width, size.height)
+                } else {
+                    android.util.Rational(16, 9)
+                }
+            }
+
+            val sourceRectHint = android.graphics.Rect()
+            playerView.getGlobalVisibleRect(sourceRectHint)
+
+            val paramsBuilder = android.app.PictureInPictureParams.Builder()
+                .setAspectRatio(aspectRatio)
+                .setSourceRectHint(sourceRectHint)
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                paramsBuilder.setSeamlessResizeEnabled(true)
+                paramsBuilder.setAutoEnterEnabled(true)
+            }
+
+            try {
+                activity.setPictureInPictureParams(paramsBuilder.build())
+                Log.d(TAG, "Updated PiP params: sourceRect=$sourceRectHint")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to update PiP params: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * Enter Picture-in-Picture mode
      */
     /**
@@ -668,16 +732,17 @@ class VideoPlayerView(
                 wasFullscreenBeforePip = isFullScreen
                 Log.d(TAG, "Saved fullscreen state before PiP: $wasFullscreenBeforePip")
 
-                // First, enter fullscreen if not already in fullscreen
-                // This ensures the video takes up the full screen before entering PiP
+                // On Android, PiP captures the entire activity window, not just a specific view
+                // The only way to show JUST the video is to enter fullscreen first
+                // This ensures the video takes up the full window before entering PiP
                 if (!isFullScreen) {
-                    Log.d(TAG, "Entering fullscreen before PiP")
+                    Log.d(TAG, "Entering fullscreen before PiP to ensure only video is shown")
                     enterFullscreenNative(activity)
                     isFullScreen = true
                     // Send fullscreen change event to Flutter
                     eventHandler.sendEvent("fullscreenChange", mapOf("isFullscreen" to true))
 
-                    // Wait a moment for fullscreen to settle
+                    // Wait for fullscreen transition to complete
                     Thread.sleep(100)
                 }
 
@@ -692,25 +757,25 @@ class VideoPlayerView(
                 }
 
                 // Get the bounds of the video player view to set as source rect
+                // This is used for the animation transition
                 val sourceRectHint = android.graphics.Rect()
                 playerView.getGlobalVisibleRect(sourceRectHint)
-                Log.d(TAG, "Source rect hint: $sourceRectHint")
+                Log.d(TAG, "Source rect hint: $sourceRectHint (player size: ${playerView.width}x${playerView.height})")
 
                 val paramsBuilder = android.app.PictureInPictureParams.Builder()
                     .setAspectRatio(aspectRatio)
+                    .setSourceRectHint(sourceRectHint)
 
-                // Set source rect hint to focus on video player area
-                // This helps Android crop to just the video player
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    paramsBuilder.setSourceRectHint(sourceRectHint)
-                }
-
-                // For Android 12+, enable seamless resize for better transitions
+                // For Android 12+, enable seamless resize and auto-enter for better transitions
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                     paramsBuilder.setSeamlessResizeEnabled(true)
+                    paramsBuilder.setAutoEnterEnabled(true)
                 }
 
                 val params = paramsBuilder.build()
+
+                // Update activity PiP params for smooth transitions
+                activity.setPictureInPictureParams(params)
 
                 // Hide all controls (both native and custom) BEFORE entering PiP mode
                 // Only system PiP controls will show
@@ -734,7 +799,7 @@ class VideoPlayerView(
                     eventHandler.sendEvent("pipStart", mapOf("isPictureInPicture" to true))
                     return true
                 } else {
-                    // Restore controls and fullscreen state if PiP failed
+                    // Restore controls if PiP failed
                     playerView.useController = showNativeControlsOriginal
 
                     // Exit fullscreen if we entered it for PiP
@@ -1007,6 +1072,13 @@ class VideoPlayerView(
 
         // Remove fullscreen button listener to prevent clicks during disposal
         playerView.setFullscreenButtonClickListener(null)
+
+        // Remove PiP layout change listener
+        pipLayoutChangeListener?.let { listener ->
+            playerView.removeOnLayoutChangeListener(listener)
+            pipLayoutChangeListener = null
+            Log.d(TAG, "Removed PiP layout change listener")
+        }
 
         // Remove listeners and stop periodic updates
         player.removeListener(observer)

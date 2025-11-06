@@ -60,6 +60,15 @@ class VideoListScreenWithPlayers extends StatelessWidget {
           );
         },
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          // Test FAB - this should NOT be visible in PiP mode
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('FAB pressed')),
+          );
+        },
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }
