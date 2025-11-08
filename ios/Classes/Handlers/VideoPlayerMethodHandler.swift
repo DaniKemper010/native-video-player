@@ -233,16 +233,22 @@ extension VideoPlayerView {
 
         // ALWAYS set media item on play to ensure this player has control
         // This is critical for both normal playback and PiP mode
+        // Run asynchronously to avoid blocking the play button
         if let mediaInfo = currentMediaInfo {
             let title = mediaInfo["title"] ?? "Unknown"
             print("📱 Setting Now Playing info for: \(title)")
-            setupNowPlayingInfo(mediaInfo: mediaInfo)
 
-            // Verify it was set correctly
-            if let nowPlayingTitle = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String {
-                print("✅  Now Playing info confirmed: \(nowPlayingTitle)")
-            } else {
-                print("⚠️  Failed to set Now Playing info")
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.setupNowPlayingInfo(mediaInfo: mediaInfo)
+
+                // Verify it was set correctly
+                DispatchQueue.main.async {
+                    if let nowPlayingTitle = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String {
+                        print("✅  Now Playing info confirmed: \(nowPlayingTitle)")
+                    } else {
+                        print("⚠️  Failed to set Now Playing info")
+                    }
+                }
             }
         } else {
             print("⚠️  No media info available when playing - media controls will not work correctly")

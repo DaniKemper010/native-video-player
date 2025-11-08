@@ -74,6 +74,7 @@ class RemoteCommandManager {
 
 extension VideoPlayerView {
     /// Sets up the Now Playing info for the Control Center and Lock Screen
+    /// This can be called from a background thread safely
     func setupNowPlayingInfo(mediaInfo: [String: Any]) {
         var nowPlayingInfo: [String: Any] = [:]
 
@@ -108,8 +109,10 @@ extension VideoPlayerView {
         // --- Playback rate (0 = paused, 1 = playing) ---
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player?.rate ?? 0.0
 
-        // --- Commit initial metadata immediately (before artwork loads) ---
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        // --- Commit initial metadata on main thread (MPNowPlayingInfoCenter requires main thread) ---
+        DispatchQueue.main.async {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        }
 
         // --- Load artwork asynchronously (if available) ---
         if let artworkUrlString = mediaInfo["artworkUrl"] as? String,
