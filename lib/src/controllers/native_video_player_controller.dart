@@ -740,15 +740,16 @@ class NativeVideoPlayerController {
 
     // If we're reconnecting after all platform views were disposed, refresh availability flags
     if (wasDisconnected) {
-      // Re-fetch availability flags from native side FIRST (wait for it to complete)
-      // This ensures the state is up-to-date before we emit it
-      await _refreshAvailabilityFlags();
+      // Re-fetch availability flags from native side asynchronously to avoid blocking UI
+      // These operations are non-critical for immediate display, so run in background
+      unawaited(_refreshAvailabilityFlags());
 
       // Ensure native controls are hidden if we have a custom overlay
       // This is critical when rapidly navigating - the overlay builder persists
       // but native controls might not have been hidden during the reconnection
+      // Run asynchronously to avoid blocking navigation
       if (_hasCustomOverlay && _methodChannel != null) {
-        await setShowNativeControls(false);
+        unawaited(setShowNativeControls(false));
       }
     }
 
