@@ -225,6 +225,22 @@ import QuartzCore
                 self?.setupAirPlayRouteDetector()
             }
         }
+
+        // Pre-warm media subsystems in background to avoid first-play blocking
+        // These systems only initialize once, and initialization blocks the UI thread
+        // By triggering initialization here, subsequent play() calls will be instant
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) {
+            // Access MPNowPlayingInfoCenter to initialize media subsystem
+            _ = MPNowPlayingInfoCenter.default()
+
+            // Access MPRemoteCommandCenter to initialize command center
+            _ = MPRemoteCommandCenter.shared()
+
+            // Access URLSession to initialize networking stack
+            _ = URLSession.shared
+
+            print("✅ Pre-warmed media subsystems (Now Playing, Remote Commands, URLSession)")
+        }
     }
 
     public func view() -> UIView {

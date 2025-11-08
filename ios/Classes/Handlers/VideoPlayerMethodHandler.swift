@@ -231,38 +231,19 @@ extension VideoPlayerView {
             try? AVAudioSession.sharedInstance().setActive(true)
         }
 
-        // Start playback IMMEDIATELY - don't wait for Now Playing setup
+        // Start playback IMMEDIATELY
         player?.play()
 
-        // THEN set up Now Playing info asynchronously (completely non-blocking)
-        // This ensures the play button responds instantly
-        if let mediaInfo = currentMediaInfo {
-            let title = mediaInfo["title"] ?? "Unknown"
-            print("📱 Will set Now Playing info for: \(title)")
+        // Apply the desired playback speed immediately
+        player?.rate = desiredPlaybackSpeed
+        print("Playing with speed: \(desiredPlaybackSpeed)")
 
-            // Set up Now Playing immediately in background - it no longer accesses blocking properties
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                self?.setupNowPlayingInfo(mediaInfo: mediaInfo)
-
-                // Verify it was set correctly
-                DispatchQueue.main.async {
-                    if let nowPlayingTitle = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String {
-                        print("✅  Now Playing info confirmed: \(nowPlayingTitle)")
-                    } else {
-                        print("⚠️  Failed to set Now Playing info")
-                    }
-                }
-            }
-        } else {
-            print("⚠️  No media info available when playing - media controls will not work correctly")
-        }
-        
         // Mark this view as the primary (active) view for this controller
         // This ensures automatic PiP will be enabled on THIS view, not other views
         if let controllerIdValue = controllerId {
             SharedPlayerManager.shared.setPrimaryView(viewId, for: controllerIdValue)
         }
-        
+
         // Enable automatic PiP for this controller and disable for all others
         // Only if automatic PiP was requested in creation params
         if #available(iOS 14.2, *) {
@@ -277,20 +258,34 @@ extension VideoPlayerView {
             }
         }
 
-        print("Playing with speed: \(desiredPlaybackSpeed)")
-        player?.play()
-        // Apply the desired playback speed
-        player?.rate = desiredPlaybackSpeed
-        print("Applied playback rate: \(player?.rate ?? 0)")
-        updateNowPlayingPlaybackTime()
         // Play event will be sent automatically by timeControlStatus observer
+        // Return result IMMEDIATELY - don't wait for Now Playing setup
         result(nil)
+
+        // THEN set up Now Playing info asynchronously (completely non-blocking)
+        // This ensures the play button responds instantly
+        if let mediaInfo = currentMediaInfo {
+            let title = mediaInfo["title"] ?? "Unknown"
+            print("📱 Will set Now Playing info for: \(title)")
+
+            // Set up Now Playing immediately in background
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                self?.setupNowPlayingInfo(mediaInfo: mediaInfo)
+            }
+        } else {
+            print("⚠️  No media info available when playing - media controls will not work correctly")
+        }
+
+        // Update Now Playing playback time asynchronously - don't block the UI
+        // This accesses MPNowPlayingInfoCenter which can block on first access
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.updateNowPlayingPlaybackTime()
+        }
     }
 
     func handlePause(result: @escaping FlutterResult) {
         player?.pause()
-        updateNowPlayingPlaybackTime()
-        
+
         // Disable automatic PiP when paused
         // This prevents automatic PiP from triggering for paused videos
         if #available(iOS 14.2, *) {
@@ -298,18 +293,28 @@ extension VideoPlayerView {
                 SharedPlayerManager.shared.setAutomaticPiPEnabled(for: controllerIdValue, enabled: false)
             }
         }
-        
+
         // Pause event will be sent automatically by timeControlStatus observer
+        // Return result IMMEDIATELY
         result(nil)
+
+        // Update Now Playing asynchronously - don't block the UI
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.updateNowPlayingPlaybackTime()
+        }
     }
 
     func handleSeekTo(call: FlutterMethodCall, result: @escaping FlutterResult) {
         if let args = call.arguments as? [String: Any],
            let milliseconds = args["milliseconds"] as? Int {
             let seconds = Double(milliseconds) / 1000.0
-            player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 1000)) { _ in
-                self.sendEvent("seek", data: ["position": milliseconds])
-                self.updateNowPlayingPlaybackTime()
+            player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 1000)) { [weak self] _ in
+                self?.sendEvent("seek", data: ["position": milliseconds])
+
+                // Update Now Playing asynchronously
+                DispatchQueue.global(qos: .utility).async {
+                    self?.updateNowPlayingPlaybackTime()
+                }
             }
         }
         result(nil)

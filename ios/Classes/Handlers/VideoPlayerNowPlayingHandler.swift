@@ -263,6 +263,7 @@ extension VideoPlayerView {
     }
 
     /// Updates playback time and rate dynamically (e.g., every second or on state change)
+    /// Can be called from any thread - dispatches to main thread for MPNowPlayingInfoCenter access
     func updateNowPlayingPlaybackTime() {
         guard let player = player else {
             return
@@ -279,15 +280,22 @@ extension VideoPlayerView {
             return
         }
 
-        var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-
+        // Get current playback state on current thread (doesn't require main thread)
         let currentTime = player.currentTime()
         let elapsedSeconds = CMTimeGetSeconds(currentTime)
-        if elapsedSeconds.isFinite {
-            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedSeconds
-        }
+        let currentRate = player.rate
 
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player.rate
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        // MPNowPlayingInfoCenter MUST be accessed on main thread
+        // Use async to avoid blocking the caller
+        DispatchQueue.main.async {
+            var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+
+            if elapsedSeconds.isFinite {
+                nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedSeconds
+            }
+
+            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = currentRate
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        }
     }
 }
