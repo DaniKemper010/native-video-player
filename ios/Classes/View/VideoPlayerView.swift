@@ -219,8 +219,11 @@ import QuartzCore
         }
 
         // Set up AirPlay route detector (iOS 11.0+)
+        // Do this asynchronously to avoid blocking initialization
         if #available(iOS 11.0, *) {
-            setupAirPlayRouteDetector()
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                self?.setupAirPlayRouteDetector()
+            }
         }
     }
 

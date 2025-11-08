@@ -210,21 +210,29 @@ extension VideoPlayerView {
     // MARK: - AirPlay Route Detection
 
     /// Sets up AVRouteDetector to monitor AirPlay availability
+    /// Can be called from a background thread safely
     @available(iOS 11.0, *)
     func setupAirPlayRouteDetector() {
         print("Setting up AirPlay route detector")
-        routeDetector = AVRouteDetector()
-        routeDetector?.isRouteDetectionEnabled = true
 
-        // Observe changes to multipleRoutesDetected
-        routeDetector?.addObserver(
-            self,
-            forKeyPath: "multipleRoutesDetected",
-            options: [.new, .initial],
-            context: nil
-        )
+        // AVRouteDetector creation and enabling must happen on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
 
-        print("AirPlay route detector setup complete, multipleRoutesDetected: \(routeDetector?.multipleRoutesDetected ?? false)")
+            self.routeDetector = AVRouteDetector()
+            // This can be slow on first access as it scans for AirPlay devices
+            self.routeDetector?.isRouteDetectionEnabled = true
+
+            // Observe changes to multipleRoutesDetected
+            self.routeDetector?.addObserver(
+                self,
+                forKeyPath: "multipleRoutesDetected",
+                options: [.new, .initial],
+                context: nil
+            )
+
+            print("AirPlay route detector setup complete, multipleRoutesDetected: \(self.routeDetector?.multipleRoutesDetected ?? false)")
+        }
     }
 
     /// Observes AirPlay route availability changes
