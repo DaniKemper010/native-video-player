@@ -105,22 +105,27 @@ extension VideoPlayerView {
         }
 
         // --- Load artwork asynchronously (if available) ---
+        // Defer this to avoid any potential blocking from URLSession initialization
         if let artworkUrlString = mediaInfo["artworkUrl"] as? String,
            let artworkUrl = URL(string: artworkUrlString) {
 
-            loadArtwork(from: artworkUrl) { [weak self] image in
-                guard let self = self,
-                      let image = image
-                else {
-                    return
-                }
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                self?.loadArtwork(from: artworkUrl) { [weak self] image in
+                    guard let self = self,
+                          let image = image
+                    else {
+                        return
+                    }
 
-                var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in
-                    image
+                    DispatchQueue.main.async {
+                        var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in
+                            image
+                        }
+                        updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                        MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                    }
                 }
-                updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
             }
         }
 
@@ -131,13 +136,20 @@ extension VideoPlayerView {
     }
 
     /// Loads artwork image from URL
+    /// Should be called from a background thread
     private func loadArtwork(from url: URL, completion: @escaping (UIImage?) -> Void) {
         URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data = data, let image = UIImage(data: data) else {
+            guard let data = data else {
                 completion(nil)
                 return
             }
-            DispatchQueue.main.async {
+
+            // Decode image on a background thread - UIImage(data:) can be slow for large images
+            DispatchQueue.global(qos: .utility).async {
+                guard let image = UIImage(data: data) else {
+                    completion(nil)
+                    return
+                }
                 completion(image)
             }
         }
