@@ -82,9 +82,12 @@ extension VideoPlayerView {
                 case .playing:
                     // ALWAYS update Now Playing info when playback starts
                     // This ensures media controls show the correct info whether in normal view or PiP
+                    // Do this asynchronously to avoid blocking the main thread
                     if let mediaInfo = currentMediaInfo {
                         print("📱 [Observer] Player started playing, updating Now Playing info for: \(mediaInfo["title"] ?? "Unknown")")
-                        setupNowPlayingInfo(mediaInfo: mediaInfo)
+                        DispatchQueue.global(qos: .utility).async { [weak self] in
+                            self?.setupNowPlayingInfo(mediaInfo: mediaInfo)
+                        }
                     } else {
                         print("⚠️ [Observer] No media info available when playing - media controls may not show correctly")
                     }
@@ -122,9 +125,12 @@ extension VideoPlayerView {
 
                                     // Ensure media info is set again after enabling PiP
                                     // This guarantees media controls work correctly in PiP mode
+                                    // Do this asynchronously to avoid blocking the main thread
                                     if let mediaInfo = currentMediaInfo {
-                                        setupNowPlayingInfo(mediaInfo: mediaInfo)
-                                        print("✅ [Observer] Media info updated for PiP mode")
+                                        DispatchQueue.global(qos: .utility).async { [weak self] in
+                                            self?.setupNowPlayingInfo(mediaInfo: mediaInfo)
+                                        }
+                                        print("✅ [Observer] Media info will be updated for PiP mode")
                                     }
                                 } else {
                                     print("📱 [Observer] Automatic PiP not enabled (canStartPictureInPictureAutomatically = false)")

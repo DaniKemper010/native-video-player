@@ -226,21 +226,19 @@ import QuartzCore
             }
         }
 
-        // Pre-warm media subsystems to avoid first-play blocking
+        // Pre-warm media subsystems IMMEDIATELY to avoid first-play blocking
         // These systems only initialize once, and initialization blocks the UI thread
         // MPNowPlayingInfoCenter and MPRemoteCommandCenter MUST be accessed on main thread
-        // By triggering initialization here asynchronously, subsequent play() calls will be instant
-        DispatchQueue.main.async {
-            // Access MPNowPlayingInfoCenter to initialize media subsystem on main thread
-            _ = MPNowPlayingInfoCenter.default()
-            print("✅ Pre-warmed MPNowPlayingInfoCenter")
+        // Do this synchronously during init to ensure they're ready before user can click play
+        // This brief initialization is acceptable during view creation
+        print("🔥 Pre-warming media subsystems synchronously...")
+        _ = MPNowPlayingInfoCenter.default()
+        print("✅ Pre-warmed MPNowPlayingInfoCenter")
 
-            // Access MPRemoteCommandCenter to initialize command center on main thread
-            _ = MPRemoteCommandCenter.shared()
-            print("✅ Pre-warmed MPRemoteCommandCenter")
-        }
+        _ = MPRemoteCommandCenter.shared()
+        print("✅ Pre-warmed MPRemoteCommandCenter")
 
-        // URLSession can be initialized on background thread
+        // Also initialize URLSession on background thread
         DispatchQueue.global(qos: .utility).async {
             _ = URLSession.shared
             print("✅ Pre-warmed URLSession")
