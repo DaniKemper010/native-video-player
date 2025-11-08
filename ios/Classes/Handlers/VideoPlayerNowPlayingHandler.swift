@@ -76,62 +76,72 @@ extension VideoPlayerView {
     /// Sets up the Now Playing info for the Control Center and Lock Screen
     /// This can be called from a background thread safely
     func setupNowPlayingInfo(mediaInfo: [String: Any]) {
-        var nowPlayingInfo: [String: Any] = [:]
+        // Defer EVERYTHING by a small amount to ensure it doesn't block the play action
+        // MPNowPlayingInfoCenter first access can initialize media subsystem
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self = self else { return }
 
-        // --- Core metadata (always available, doesn't block) ---
-        if let title = mediaInfo["title"] as? String {
-            nowPlayingInfo[MPMediaItemPropertyTitle] = title
-        }
+            var nowPlayingInfo: [String: Any] = [:]
 
-        if let subtitle = mediaInfo["subtitle"] as? String {
-            nowPlayingInfo[MPMediaItemPropertyArtist] = subtitle
-        }
+            // --- Core metadata (always available, doesn't block) ---
+            if let title = mediaInfo["title"] as? String {
+                nowPlayingInfo[MPMediaItemPropertyTitle] = title
+            }
 
-        if let album = mediaInfo["album"] as? String {
-            nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = album
-        }
+            if let subtitle = mediaInfo["subtitle"] as? String {
+                nowPlayingInfo[MPMediaItemPropertyArtist] = subtitle
+            }
 
-        // --- Playback rate (doesn't block) ---
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player?.rate ?? 0.0
+            if let album = mediaInfo["album"] as? String {
+                nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = album
+            }
 
-        // --- Skip duration and elapsed time initially ---
-        // These require asset metadata to be loaded, which can block the thread
-        // They will be updated later by updateNowPlayingPlaybackTime() which is called
-        // from the periodic time observer once the asset is ready
+            // --- Playback rate (doesn't block) ---
+            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = self.player?.rate ?? 0.0
 
-        // --- Commit initial metadata on main thread (MPNowPlayingInfoCenter requires main thread) ---
-        DispatchQueue.main.async {
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-        }
+            // --- Skip duration and elapsed time initially ---
+            // These require asset metadata to be loaded, which can block the thread
+            // They will be updated later by updateNowPlayingPlaybackTime() which is called
+            // from the periodic time observer once the asset is ready
 
-        // --- Load artwork asynchronously (if available) ---
-        // Defer this to avoid any potential blocking from URLSession initialization
-        if let artworkUrlString = mediaInfo["artworkUrl"] as? String,
-           let artworkUrl = URL(string: artworkUrlString) {
+            // --- Commit initial metadata on main thread (MPNowPlayingInfoCenter requires main thread) ---
+            DispatchQueue.main.async {
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+            }
 
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                self?.loadArtwork(from: artworkUrl) { [weak self] image in
+            // --- Load artwork asynchronously (if available) ---
+            // Defer this to avoid any potential blocking from URL validation or URLSession initialization
+            if let artworkUrlString = mediaInfo["artworkUrl"] as? String {
+                // Validate URL on background thread to avoid any potential blocking
+                DispatchQueue.global(qos: .utility).async { [weak self] in
                     guard let self = self,
-                          let image = image
-                    else {
+                          let artworkUrl = URL(string: artworkUrlString) else {
                         return
                     }
 
-                    DispatchQueue.main.async {
-                        var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
-                        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in
-                            image
+                    self.loadArtwork(from: artworkUrl) { [weak self] image in
+                        guard let self = self,
+                              let image = image
+                        else {
+                            return
                         }
-                        updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                        MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+
+                        DispatchQueue.main.async {
+                            var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in
+                                image
+                            }
+                            updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                            MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                        }
                     }
                 }
             }
-        }
 
-        // --- Setup remote commands asynchronously to avoid blocking UI ---
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.setupRemoteCommandCenter()
+            // --- Setup remote commands asynchronously to avoid blocking UI ---
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.setupRemoteCommandCenter()
+            }
         }
     }
 
