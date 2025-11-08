@@ -231,14 +231,17 @@ extension VideoPlayerView {
             try? AVAudioSession.sharedInstance().setActive(true)
         }
 
-        // ALWAYS set media item on play to ensure this player has control
-        // This is critical for both normal playback and PiP mode
-        // Run asynchronously to avoid blocking the play button
+        // Start playback IMMEDIATELY - don't wait for Now Playing setup
+        player?.play()
+
+        // THEN set up Now Playing info asynchronously (completely non-blocking)
+        // This ensures the play button responds instantly
         if let mediaInfo = currentMediaInfo {
             let title = mediaInfo["title"] ?? "Unknown"
-            print("📱 Setting Now Playing info for: \(title)")
+            print("📱 Will set Now Playing info for: \(title)")
 
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            // Delay slightly to ensure player has started and asset is ready
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 self?.setupNowPlayingInfo(mediaInfo: mediaInfo)
 
                 // Verify it was set correctly
