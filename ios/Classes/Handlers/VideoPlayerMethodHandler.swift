@@ -30,7 +30,10 @@ extension VideoPlayerView {
             print("⚠️ No media info provided during load")
         }
 
+        // Send loading event and return immediately to avoid blocking Flutter
         sendEvent("loading")
+        result(nil)  // Return immediately - don't block the UI
+        print("🎬 Returned from load() - loading will continue asynchronously")
 
         // Determine if this is likely an HLS stream
         let isHls = isHlsUrl(url)
@@ -81,25 +84,26 @@ extension VideoPlayerView {
             print("🎬 Skipping quality fetch for non-HLS content")
         }
 
-        // --- Build player item ---
-        let playerItem: AVPlayerItem
-        if let headers = headers {
-            let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
-            playerItem = AVPlayerItem(asset: asset)
-        } else {
-            let asset = AVURLAsset(url: url)
-            playerItem = AVPlayerItem(asset: asset)
-        }
+        // --- Build player item asynchronously to avoid blocking UI ---
+        // Creating AVURLAsset can block while iOS validates the URL and initializes
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
 
-        // --- Configure HDR settings asynchronously to avoid UI freeze ---
-        // Disable HDR if enableHDR is false to prevent washed-out video appearance
-        if !self.enableHDR {
-            print("🎨 HDR disabled - forcing SDR color space via videoComposition")
-            // Create a video composition that forces SDR color space (Rec.709)
-            // Do this asynchronously to avoid blocking the main thread
-            DispatchQueue.global(qos: .userInitiated).async { [weak self, weak playerItem] in
-                guard let self = self, let playerItem = playerItem else { return }
+            print("🎬 Creating AVURLAsset on background thread...")
+            let playerItem: AVPlayerItem
+            if let headers = headers {
+                let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+                playerItem = AVPlayerItem(asset: asset)
+            } else {
+                let asset = AVURLAsset(url: url)
+                playerItem = AVPlayerItem(asset: asset)
+            }
+            print("🎬 AVURLAsset created, will apply to player on main thread...")
 
+            // --- Configure HDR settings if needed ---
+            // Disable HDR if enableHDR is false to prevent washed-out video appearance
+            if !self.enableHDR {
+                print("🎨 HDR disabled - forcing SDR color space via videoComposition")
                 if let asset = playerItem.asset as? AVURLAsset {
                     // Get the first video track to determine the natural size
                     let videoTracks = asset.tracks(withMediaType: .video)
@@ -116,110 +120,112 @@ extension VideoPlayerView {
                         videoComposition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
                         videoComposition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
 
-                        // Apply on main thread
-                        DispatchQueue.main.async {
-                            playerItem.videoComposition = videoComposition
-                            print("✅ Applied SDR color space (Rec.709) to video composition with size: \(videoComposition.renderSize)")
-                        }
+                        playerItem.videoComposition = videoComposition
+                        print("✅ Applied SDR color space (Rec.709) to video composition with size: \(videoComposition.renderSize)")
                     } else {
                         print("⚠️ No video track found, skipping video composition")
                     }
                 }
-            }
-        } else {
-            print("🎨 HDR enabled - allowing native HDR playback")
-        }
-
-        player?.replaceCurrentItem(with: playerItem)
-
-        // --- Set up observers for buffer status and player state ---
-        addObservers(to: playerItem)
-
-        // --- Set up periodic time observer for Now Playing elapsed time updates ---
-        setupPeriodicTimeObserver()
-
-        // --- Set up audio session asynchronously to avoid blocking ---
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
-                try AVAudioSession.sharedInstance().setActive(true)
-            } catch {
-                print("❌ Failed to configure AVAudioSession during load: \(error.localizedDescription)")
-            }
-        }
-
-        // --- Listen for end of playback ---
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(videoDidEnd),
-            name: .AVPlayerItemDidPlayToEndTime,
-            object: playerItem
-        )
-
-        // --- Observe status (wait for ready) ---
-        var statusObserver: NSKeyValueObservation?
-        statusObserver = playerItem.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
-            guard let self = self else {
-                return
+            } else {
+                print("🎨 HDR enabled - allowing native HDR playback")
             }
 
-            switch item.status {
-            case .readyToPlay:
-                print("🎬 Video ready to play")
+            // Apply to player on main thread
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
 
-                // Get duration
-                let duration = item.duration
-                let durationSeconds = CMTimeGetSeconds(duration)
+                self.player?.replaceCurrentItem(with: playerItem)
 
-                // Send Flutter event with duration (only if valid)
-                if durationSeconds.isFinite && !durationSeconds.isNaN {
-                    let totalDuration = Int(durationSeconds * 1000) // milliseconds
-                    self.sendEvent("loaded", data: [
-                        "duration": totalDuration
-                    ])
-                } else {
-                    self.sendEvent("loaded")
+                // --- Set up observers for buffer status and player state ---
+                self.addObservers(to: playerItem)
+
+                // --- Set up periodic time observer for Now Playing elapsed time updates ---
+                self.setupPeriodicTimeObserver()
+
+                // --- Listen for end of playback ---
+                NotificationCenter.default.addObserver(
+                    self,
+                    selector: #selector(self.videoDidEnd),
+                    name: .AVPlayerItemDidPlayToEndTime,
+                    object: playerItem
+                )
+            }
+
+            // --- Set up audio session asynchronously to avoid blocking ---
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
+                    try AVAudioSession.sharedInstance().setActive(true)
+                } catch {
+                    print("❌ Failed to configure AVAudioSession during load: \(error.localizedDescription)")
+                }
+            }
+
+            // --- Observe status (wait for ready) ---
+            var statusObserver: NSKeyValueObservation?
+            statusObserver = playerItem.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+                guard let self = self else {
+                    return
                 }
 
-                // Set up PiP controller if available
-                // Note: We need to get the player layer from the AVPlayerViewController
-                // Check PiP support and send availability
-                // Note: Do NOT create custom AVPictureInPictureController here
-                // as it interferes with automatic PiP from AVPlayerViewController
-                if #available(iOS 14.0, *) {
-                    if AVPictureInPictureController.isPictureInPictureSupported() {
-                        print("🎬 PiP is supported on this device")
-                        // Send availability immediately
-                        self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": true])
+                switch item.status {
+                case .readyToPlay:
+                    print("🎬 Video ready to play")
+
+                    // Get duration
+                    let duration = item.duration
+                    let durationSeconds = CMTimeGetSeconds(duration)
+
+                    // Send Flutter event with duration (only if valid)
+                    if durationSeconds.isFinite && !durationSeconds.isNaN {
+                        let totalDuration = Int(durationSeconds * 1000) // milliseconds
+                        self.sendEvent("loaded", data: [
+                            "duration": totalDuration
+                        ])
                     } else {
-                        print("🎬 PiP is NOT supported on this device")
+                        self.sendEvent("loaded")
+                    }
+
+                    // Set up PiP controller if available
+                    // Note: We need to get the player layer from the AVPlayerViewController
+                    // Check PiP support and send availability
+                    // Note: Do NOT create custom AVPictureInPictureController here
+                    // as it interferes with automatic PiP from AVPlayerViewController
+                    if #available(iOS 14.0, *) {
+                        if AVPictureInPictureController.isPictureInPictureSupported() {
+                            print("🎬 PiP is supported on this device")
+                            // Send availability immediately
+                            self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": true])
+                        } else {
+                            print("🎬 PiP is NOT supported on this device")
+                            self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": false])
+                        }
+                    } else {
+                        // iOS version too old for PiP
                         self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": false])
                     }
-                } else {
-                    // iOS version too old for PiP
-                    self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": false])
+
+                    // Auto play if requested
+                    if autoPlay {
+                        self.player?.play()
+                        // Play event will be sent automatically by timeControlStatus observer
+                    }
+
+                    // Release observer (avoid leaks)
+                    statusObserver?.invalidate()
+
+                case .failed:
+                    let error = item.error?.localizedDescription ?? "Unknown error"
+                    print("❌ Failed to load video: \(error)")
+                    self.sendEvent("error", data: ["message": error])
+                    statusObserver?.invalidate()
+
+                case .unknown:
+                    break
+
+                @unknown default:
+                    break
                 }
-
-                // Auto play if requested
-                if autoPlay {
-                    self.player?.play()
-                    // Play event will be sent automatically by timeControlStatus observer
-                }
-
-                // Release observer (avoid leaks)
-                statusObserver?.invalidate()
-
-                result(nil)
-
-            case .failed:
-                let error = item.error?.localizedDescription ?? "Unknown error"
-                result(FlutterError(code: "LOAD_ERROR", message: error, details: nil))
-
-            case .unknown:
-                break
-
-            @unknown default:
-                break
             }
         }
     }
