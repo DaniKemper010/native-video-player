@@ -131,8 +131,10 @@ extension VideoPlayerView {
             }
         }
 
-        // --- Setup remote commands (if not already done) ---
-        setupRemoteCommandCenter()
+        // --- Setup remote commands asynchronously to avoid blocking UI ---
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.setupRemoteCommandCenter()
+        }
     }
 
     /// Loads artwork image from URL
@@ -151,15 +153,20 @@ extension VideoPlayerView {
 
     /// Sets up remote command center for Control Center controls
     /// Only registers if this view should be the owner
+    /// This can be called from a background thread safely
     private func setupRemoteCommandCenter() {
-        let commandCenter = MPRemoteCommandCenter.shared()
+        // MPRemoteCommandCenter must be accessed on main thread
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
 
-        // Atomically take ownership and clear all existing targets
-        // This prevents race conditions when multiple views try to register concurrently
-        RemoteCommandManager.shared.atomicallySetOwnerAndRemoveTargets(viewId)
+            let commandCenter = MPRemoteCommandCenter.shared()
 
-        // --- Play ---
-        commandCenter.playCommand.addTarget { [weak self] _ in
+            // Atomically take ownership and clear all existing targets
+            // This prevents race conditions when multiple views try to register concurrently
+            RemoteCommandManager.shared.atomicallySetOwnerAndRemoveTargets(self.viewId)
+
+            // --- Play ---
+            commandCenter.playCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
 
             // Only handle if we still own the remote commands
@@ -232,11 +239,12 @@ extension VideoPlayerView {
             let currentTime = player.currentTime()
             let newTime = CMTimeSubtract(currentTime, CMTime(seconds: skipEvent.interval, preferredTimescale: 600))
             player.seek(to: max(newTime, .zero))
-            self.updateNowPlayingPlaybackTime()
-            return .success
-        }
+                self.updateNowPlayingPlaybackTime()
+                return .success
+            }
 
-        print("🎛️ View \(viewId) registered remote command handlers")
+            print("🎛️ View \(self.viewId) registered remote command handlers")
+        }
     }
 
     /// Updates playback time and rate dynamically (e.g., every second or on state change)

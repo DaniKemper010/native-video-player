@@ -58,8 +58,8 @@ class _VideoDetailScreenFullState extends State<VideoDetailScreenFull> {
         debugPrint('🎬 Detail screen loaded, video was playing: $wasPlaying');
         if (wasPlaying) {
           debugPrint('🎬 Resuming playback in detail screen');
-          // Wait longer for the new platform view to be fully ready
-          await Future.delayed(const Duration(milliseconds: 500));
+          // Reduced delay - platform view should be ready quickly
+          await Future.delayed(const Duration(milliseconds: 100));
           await _controller.play();
           debugPrint('🎬 Playback resumed');
         }

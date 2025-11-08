@@ -180,13 +180,16 @@ import QuartzCore
         }
 
         // Background audio setup - required for automatic PiP
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
-            print("✅ AVAudioSession configured for playback")
-        } catch {
-            print("❌ Failed to configure AVAudioSession: \(error.localizedDescription)")
+        // Do this asynchronously to avoid blocking view initialization
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
+                try AVAudioSession.sharedInstance().setActive(true)
+                print("✅ AVAudioSession configured for playback")
+            } catch {
+                print("❌ Failed to configure AVAudioSession: \(error.localizedDescription)")
+            }
         }
-        try? AVAudioSession.sharedInstance().setActive(true)
 
         print("Setting up method channel: \(channelName)")
         // Set up method call handler

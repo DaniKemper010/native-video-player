@@ -91,32 +91,39 @@ extension VideoPlayerView {
             playerItem = AVPlayerItem(asset: asset)
         }
 
-        // --- Configure HDR settings ---
+        // --- Configure HDR settings asynchronously to avoid UI freeze ---
         // Disable HDR if enableHDR is false to prevent washed-out video appearance
         if !self.enableHDR {
             print("🎨 HDR disabled - forcing SDR color space via videoComposition")
             // Create a video composition that forces SDR color space (Rec.709)
-            // This prevents HDR content from appearing washed-out on non-HDR displays
-            // by forcing the video to use standard dynamic range color properties
-            if let asset = playerItem.asset as? AVURLAsset {
-                // Get the first video track to determine the natural size
-                let videoTracks = asset.tracks(withMediaType: .video)
-                if let videoTrack = videoTracks.first {
-                    let videoComposition = AVMutableVideoComposition(propertiesOf: asset)
+            // Do this asynchronously to avoid blocking the main thread
+            DispatchQueue.global(qos: .userInitiated).async { [weak self, weak playerItem] in
+                guard let self = self, let playerItem = playerItem else { return }
 
-                    // Ensure renderSize is set (required for videoComposition)
-                    if videoComposition.renderSize.width <= 0 || videoComposition.renderSize.height <= 0 {
-                        videoComposition.renderSize = videoTrack.naturalSize
+                if let asset = playerItem.asset as? AVURLAsset {
+                    // Get the first video track to determine the natural size
+                    let videoTracks = asset.tracks(withMediaType: .video)
+                    if let videoTrack = videoTracks.first {
+                        let videoComposition = AVMutableVideoComposition(propertiesOf: asset)
+
+                        // Ensure renderSize is set (required for videoComposition)
+                        if videoComposition.renderSize.width <= 0 || videoComposition.renderSize.height <= 0 {
+                            videoComposition.renderSize = videoTrack.naturalSize
+                        }
+
+                        // Use Rec.709 color space for HD SDR content
+                        videoComposition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
+                        videoComposition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
+                        videoComposition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
+
+                        // Apply on main thread
+                        DispatchQueue.main.async {
+                            playerItem.videoComposition = videoComposition
+                            print("✅ Applied SDR color space (Rec.709) to video composition with size: \(videoComposition.renderSize)")
+                        }
+                    } else {
+                        print("⚠️ No video track found, skipping video composition")
                     }
-
-                    // Use Rec.709 color space for HD SDR content
-                    videoComposition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
-                    videoComposition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
-                    videoComposition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
-                    playerItem.videoComposition = videoComposition
-                    print("✅ Applied SDR color space (Rec.709) to video composition with size: \(videoComposition.renderSize)")
-                } else {
-                    print("⚠️ No video track found, skipping video composition")
                 }
             }
         } else {
@@ -131,9 +138,15 @@ extension VideoPlayerView {
         // --- Set up periodic time observer for Now Playing elapsed time updates ---
         setupPeriodicTimeObserver()
 
-        // --- Set up audio session ---
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // --- Set up audio session asynchronously to avoid blocking ---
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
+                try AVAudioSession.sharedInstance().setActive(true)
+            } catch {
+                print("❌ Failed to configure AVAudioSession during load: \(error.localizedDescription)")
+            }
+        }
 
         // --- Listen for end of playback ---
         NotificationCenter.default.addObserver(
@@ -213,7 +226,10 @@ extension VideoPlayerView {
 
 
     func handlePlay(result: @escaping FlutterResult) {
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // Activate audio session asynchronously to avoid blocking
+        DispatchQueue.global(qos: .userInitiated).async {
+            try? AVAudioSession.sharedInstance().setActive(true)
+        }
 
         // ALWAYS set media item on play to ensure this player has control
         // This is critical for both normal playback and PiP mode
