@@ -78,7 +78,7 @@ extension VideoPlayerView {
     func setupNowPlayingInfo(mediaInfo: [String: Any]) {
         var nowPlayingInfo: [String: Any] = [:]
 
-        // --- Core metadata ---
+        // --- Core metadata (always available, doesn't block) ---
         if let title = mediaInfo["title"] as? String {
             nowPlayingInfo[MPMediaItemPropertyTitle] = title
         }
@@ -91,23 +91,13 @@ extension VideoPlayerView {
             nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = album
         }
 
-        // --- Playback duration & elapsed time ---
-        if let duration = player?.currentItem?.asset.duration {
-            let durationSeconds = CMTimeGetSeconds(duration)
-            if durationSeconds.isFinite {
-                nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = durationSeconds
-            }
-        }
-
-        if let currentTime = player?.currentTime() {
-            let elapsedSeconds = CMTimeGetSeconds(currentTime)
-            if elapsedSeconds.isFinite {
-                nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedSeconds
-            }
-        }
-
-        // --- Playback rate (0 = paused, 1 = playing) ---
+        // --- Playback rate (doesn't block) ---
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = player?.rate ?? 0.0
+
+        // --- Skip duration and elapsed time initially ---
+        // These require asset metadata to be loaded, which can block the thread
+        // They will be updated later by updateNowPlayingPlaybackTime() which is called
+        // from the periodic time observer once the asset is ready
 
         // --- Commit initial metadata on main thread (MPNowPlayingInfoCenter requires main thread) ---
         DispatchQueue.main.async {

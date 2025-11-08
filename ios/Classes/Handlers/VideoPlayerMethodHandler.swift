@@ -240,8 +240,8 @@ extension VideoPlayerView {
             let title = mediaInfo["title"] ?? "Unknown"
             print("📱 Will set Now Playing info for: \(title)")
 
-            // Delay slightly to ensure player has started and asset is ready
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            // Set up Now Playing immediately in background - it no longer accesses blocking properties
+            DispatchQueue.global(qos: .utility).async { [weak self] in
                 self?.setupNowPlayingInfo(mediaInfo: mediaInfo)
 
                 // Verify it was set correctly
