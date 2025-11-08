@@ -124,7 +124,14 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> {
   void initState() {
     super.initState();
     if (widget.shouldShowVideo) {
-      _init();
+      // Stagger initialization to avoid overwhelming the platform channel
+      // Use video ID to create different delays for each video
+      final delayMs = (widget.video.id % 5) * 150; // 0ms, 150ms, 300ms, 450ms, 600ms
+      Future.delayed(Duration(milliseconds: delayMs), () {
+        if (mounted) {
+          _init();
+        }
+      });
     }
   }
 
