@@ -97,14 +97,20 @@ extension VideoPlayerView {
             print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ⚠️" : "BACKGROUND ✓")")
             guard let self = self else { return }
 
-            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Creating AVURLAsset...")
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Creating AVURLAsset with non-blocking options...")
             let assetStart = Date().timeIntervalSince1970
-            let asset: AVURLAsset
+
+            // CRITICAL: Prevent AVURLAsset from doing synchronous network validation
+            // AVURLAssetPreferPreciseDurationAndTimingKey: false prevents blocking network calls
+            var options: [String: Any] = [
+                AVURLAssetPreferPreciseDurationAndTimingKey: false
+            ]
+
             if let headers = headers {
-                asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
-            } else {
-                asset = AVURLAsset(url: url)
+                options["AVURLAssetHTTPHeaderFieldsKey"] = headers
             }
+
+            let asset = AVURLAsset(url: url, options: options)
             print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ AVURLAsset created (took \(String(format: "%.3f", Date().timeIntervalSince1970 - assetStart))s)")
 
             // Preload essential properties asynchronously to prevent main thread blocking
