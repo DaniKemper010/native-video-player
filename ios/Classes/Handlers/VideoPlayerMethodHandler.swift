@@ -172,18 +172,28 @@ extension VideoPlayerView {
                 case .readyToPlay:
                     print("🎬 Video ready to play")
 
-                    // Get duration
-                    let duration = item.duration
-                    let durationSeconds = CMTimeGetSeconds(duration)
+                    // Send loaded event immediately WITHOUT duration
+                    // Duration will be sent separately once it's available
+                    self.sendEvent("loaded")
 
-                    // Send Flutter event with duration (only if valid)
-                    if durationSeconds.isFinite && !durationSeconds.isNaN {
-                        let totalDuration = Int(durationSeconds * 1000) // milliseconds
-                        self.sendEvent("loaded", data: [
-                            "duration": totalDuration
-                        ])
-                    } else {
-                        self.sendEvent("loaded")
+                    // Get duration asynchronously to avoid blocking the main thread
+                    // Accessing item.duration can block while asset metadata loads
+                    DispatchQueue.global(qos: .userInitiated).async { [weak self, weak item] in
+                        guard let self = self, let item = item else { return }
+
+                        let duration = item.duration
+                        let durationSeconds = CMTimeGetSeconds(duration)
+
+                        // Send duration update event if valid
+                        if durationSeconds.isFinite && !durationSeconds.isNaN {
+                            let totalDuration = Int(durationSeconds * 1000) // milliseconds
+                            print("🎬 Duration loaded: \(totalDuration)ms, sending update event")
+                            self.sendEvent("durationChanged", data: [
+                                "duration": totalDuration
+                            ])
+                        } else {
+                            print("⚠️ Duration is not valid: \(durationSeconds)")
+                        }
                     }
 
                     // Set up PiP controller if available

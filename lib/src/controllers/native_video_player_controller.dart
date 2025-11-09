@@ -939,6 +939,17 @@ class NativeVideoPlayerController {
             }
           }
 
+          // Handle duration change events
+          if (controlEvent.state == PlayerControlState.durationChanged) {
+            if (controlEvent.data != null &&
+                controlEvent.data!['duration'] != null) {
+              final int durationMs = (controlEvent.data!['duration'] as num).toInt();
+              _updateState(_state.copyWith(
+                duration: Duration(milliseconds: durationMs),
+              ));
+            }
+          }
+
           // Handle PiP state events
           if (controlEvent.state == PlayerControlState.pipStarted ||
               controlEvent.state == PlayerControlState.pipStopped) {
