@@ -44,56 +44,64 @@ extension VideoPlayerView {
         let isHls = isHlsUrl(url)
         print("🎬 Loading video - URL: \(urlString), isHLS: \(isHls)")
 
-        // Fetch qualities (async) only for HLS streams
+        // Fetch qualities asynchronously (non-blocking) for HLS streams
+        // IMPORTANT: Don't wait for this - let it happen in parallel
         if isHls {
-            VideoPlayerQualityHandler.fetchHLSQualities(from: url) { [weak self] qualities in
-            guard let self = self else { return }
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Starting async HLS quality fetch (non-blocking)...")
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                VideoPlayerQualityHandler.fetchHLSQualities(from: url) { [weak self] qualities in
+                    guard let self = self else { return }
 
-            self.qualityLevels = qualities
+                    self.qualityLevels = qualities
 
-            // Convert to Flutter format
-            var result: [[String: Any]] = []
+                    // Convert to Flutter format
+                    var result: [[String: Any]] = []
 
-            // Add auto quality option
-            result.append([
-                "label": "Auto",
-                "url": qualities.first?.url ?? "",
-                "isAuto": true
-            ])
+                    // Add auto quality option
+                    result.append([
+                        "label": "Auto",
+                        "url": qualities.first?.url ?? "",
+                        "isAuto": true
+                    ])
 
-            // Add all available qualities
-            result.append(contentsOf: qualities.map { quality in
-                [
-                    "label": quality.label,
-                    "url": quality.url,
-                    "bitrate": quality.bitrate,
-                    "width": Int(quality.resolution.width),
-                    "height": Int(quality.resolution.height),
-                    "isAuto": false
-                ]
-            })
+                    // Add all available qualities
+                    result.append(contentsOf: qualities.map { quality in
+                        [
+                            "label": quality.label,
+                            "url": quality.url,
+                            "bitrate": quality.bitrate,
+                            "width": Int(quality.resolution.width),
+                            "height": Int(quality.resolution.height),
+                            "isAuto": false
+                        ]
+                    })
 
-            // Send qualities to Flutter
-            self.availableQualities = result
+                    // Send qualities to Flutter
+                    self.availableQualities = result
 
-            // Store in SharedPlayerManager if this is a shared player
-            if let controllerIdValue = self.controllerId {
-                SharedPlayerManager.shared.setQualities(
-                    for: controllerIdValue,
-                    qualities: result,
-                    qualityLevels: qualities
-                )
-            }
+                    // Store in SharedPlayerManager if this is a shared player
+                    if let controllerIdValue = self.controllerId {
+                        SharedPlayerManager.shared.setQualities(
+                            for: controllerIdValue,
+                            qualities: result,
+                            qualityLevels: qualities
+                        )
+                    }
+                    print("⏱️ HLS qualities loaded: \(qualities.count) qualities")
+                }
             }
         } else {
             print("🎬 Skipping quality fetch for non-HLS content")
         }
 
-        // --- Build player item asynchronously to avoid blocking UI ---
-        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Dispatching to background queue...")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self, t0] in
-            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ▶️ ENTERED background queue")
-            print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ⚠️" : "BACKGROUND ✓")")
+        // --- Build player item - CRITICAL: Create on MAIN thread for streaming URLs ---
+        // Even AVPlayerItem(url:) blocks for 5+ seconds on background threads due to network I/O
+        // The solution: Create and apply the player item on the MAIN thread IMMEDIATELY
+        // Let AVPlayer handle all streaming asynchronously - don't wait for anything!
+        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Creating player item on MAIN thread for instant streaming...")
+        DispatchQueue.main.async { [weak self, t0] in
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ▶️ ENTERED MAIN thread")
+            print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ✓" : "BACKGROUND ⚠️")")
             guard let self = self else { return }
 
             // CRITICAL DISCOVERY: AVURLAsset creation blocks for 6+ seconds on network URLs
