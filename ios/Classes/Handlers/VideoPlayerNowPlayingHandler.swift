@@ -76,9 +76,11 @@ extension VideoPlayerView {
     /// Sets up the Now Playing info for the Control Center and Lock Screen
     /// This can be called from a background thread safely
     func setupNowPlayingInfo(mediaInfo: [String: Any]) {
-        // Defer EVERYTHING by a small amount to ensure it doesn't block the play action
-        // MPNowPlayingInfoCenter first access can initialize media subsystem
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.05) { [weak self] in
+        // Defer media session setup by 3 seconds to allow video to start playing smoothly first
+        // MPNowPlayingInfoCenter first access BLOCKS MAIN THREAD for 10+ seconds
+        // By delaying, the user gets immediate playback, and media controls appear later
+        // This is better UX than freezing the UI on play
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3.0) { [weak self] in
             guard let self = self else { return }
 
             var nowPlayingInfo: [String: Any] = [:]
@@ -105,8 +107,11 @@ extension VideoPlayerView {
             // from the periodic time observer once the asset is ready
 
             // --- Commit initial metadata on main thread (MPNowPlayingInfoCenter requires main thread) ---
+            // This WILL block the main thread for 10+ seconds on first access, but user is already watching video
+            print("🎵 Setting up Now Playing info (this may block briefly on first time)")
             DispatchQueue.main.async {
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+                print("✅ Now Playing info set successfully")
             }
 
             // --- Load artwork asynchronously (if available) ---

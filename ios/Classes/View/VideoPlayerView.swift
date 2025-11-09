@@ -226,38 +226,11 @@ import QuartzCore
             }
         }
 
-        // Pre-warm media subsystems to avoid first-play blocking
-        // Do this asynchronously on main thread with high priority to ensure it executes
-        // before user can click play, but without blocking view initialization
-        DispatchQueue.main.async(qos: .userInitiated) { [weak self] in
-            guard let self = self else { return }
-
-            print("🔥 Pre-warming media subsystems...")
-
-            // Initialize MPNowPlayingInfoCenter
-            let nowPlayingCenter = MPNowPlayingInfoCenter.default()
-            print("✅ Pre-warmed MPNowPlayingInfoCenter")
-
-            // Initialize MPRemoteCommandCenter
-            _ = MPRemoteCommandCenter.shared()
-            print("✅ Pre-warmed MPRemoteCommandCenter")
-
-            // CRITICAL: Also initialize the nowPlayingInfo setter pathway
-            // The first time nowPlayingInfo is set, iOS initializes media item subsystems
-            // Set and immediately clear to warm up this code path
-            nowPlayingCenter.nowPlayingInfo = [
-                MPMediaItemPropertyTitle: "Initializing",
-                MPNowPlayingInfoPropertyPlaybackRate: 0.0
-            ]
-            nowPlayingCenter.nowPlayingInfo = nil
-            print("✅ Pre-warmed nowPlayingInfo setter pathway")
-        }
-
-        // Also initialize URLSession on background thread
-        DispatchQueue.global(qos: .utility).async {
-            _ = URLSession.shared
-            print("✅ Pre-warmed URLSession")
-        }
+        // DO NOT pre-warm media subsystems during initialization
+        // Testing showed this blocks the main thread for 10+ seconds on first access
+        // Instead, all media session operations are now fully asynchronous and non-blocking
+        // See setupNowPlayingInfo() which runs entirely on background threads
+        print("✅ Skipping media subsystem pre-warming to avoid 10s init freeze")
     }
 
     public func view() -> UIView {
