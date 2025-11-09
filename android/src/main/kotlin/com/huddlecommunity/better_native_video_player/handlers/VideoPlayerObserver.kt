@@ -5,6 +5,9 @@ import android.os.Looper
 import android.util.Log
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Observes ExoPlayer state changes and reports them via EventHandler
@@ -87,11 +90,21 @@ class VideoPlayerObserver(
                 // Reset buffering flag when we're ready
                 hasReportedBuffering = false
 
-                // Ready state is handled by onIsLoadingChanged when loading finishes
-                // But send loaded event with duration here as it's state-specific
-                val duration = player.duration.toInt()
-                if (duration > 0 && !player.isLoading) {
-                    eventHandler.sendEvent("loaded", mapOf("duration" to duration))
+                // Send loaded event immediately without duration to avoid blocking
+                if (!player.isLoading) {
+                    eventHandler.sendEvent("loaded")
+                }
+
+                // Send duration asynchronously to avoid blocking the main thread
+                // player.duration can block while metadata loads
+                CoroutineScope(Dispatchers.IO).launch {
+                    val duration = player.duration.toInt()
+                    if (duration > 0) {
+                        Log.d(TAG, "Duration loaded: ${duration}ms, sending durationChanged event")
+                        eventHandler.sendEvent("durationChanged", mapOf("duration" to duration))
+                    } else {
+                        Log.w(TAG, "Duration is not valid: $duration")
+                    }
                 }
             }
             Player.STATE_ENDED -> {

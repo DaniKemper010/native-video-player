@@ -105,7 +105,10 @@ class VideoPlayerMethodHandler(
 
         Log.d(TAG, "Loading video: $url (autoPlay: $autoPlay)")
 
+        // Send loading event and return immediately to avoid blocking Flutter
         eventHandler.sendEvent("loading")
+        result.success(null)
+        Log.d(TAG, "Returned from load() - loading will continue asynchronously")
 
         // Determine if this is a local file or remote URL
         val isLocalFile = url.startsWith("file://") || url.startsWith("/")
@@ -198,26 +201,27 @@ class VideoPlayerMethodHandler(
         // NOTE: Media session will be set up when playback starts (in VideoPlayerObserver)
         // This ensures the correct video's metadata is displayed even when switching between videos
 
-        // Wait for player to be ready
+        // Listen for player to be ready
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == androidx.media3.common.Player.STATE_READY) {
                     eventHandler.sendEvent("loaded")
                     player.removeListener(this)
-                    
+
                     // Check and send PiP availability after video is loaded
                     checkAndSendPipAvailability()
-                    
+
                     // Send AirPlay availability (always false on Android)
                     checkAndSendAirPlayAvailability()
-                    
-                    result.success(null)
+
+                    // result.success already called immediately - don't call again
                 }
             }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 player.removeListener(this)
-                result.error("LOAD_ERROR", error.message ?: "Unknown error", null)
+                Log.e(TAG, "Failed to load video: ${error.message}")
+                eventHandler.sendEvent("error", mapOf("message" to (error.message ?: "Unknown error")))
             }
         }
         player.addListener(listener)
