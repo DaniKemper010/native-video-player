@@ -90,220 +90,247 @@ extension VideoPlayerView {
         }
 
         // --- Build player item asynchronously to avoid blocking UI ---
-        // Creating AVURLAsset can block while iOS validates the URL and initializes
         print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Dispatching to background queue...")
         DispatchQueue.global(qos: .userInitiated).async { [weak self, t0] in
             print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ▶️ ENTERED background queue")
             print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ⚠️" : "BACKGROUND ✓")")
             guard let self = self else { return }
 
-            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Creating AVURLAsset with non-blocking options...")
-            let assetStart = Date().timeIntervalSince1970
+            // CRITICAL DISCOVERY: AVURLAsset creation blocks for 6+ seconds on network URLs
+            // even on background threads, even with options to prevent it.
+            // Solution: Use AVPlayerItem(url:) directly for remote URLs - it's designed for streaming!
+            // Only use AVURLAsset for local files where preloading works instantly.
 
-            // CRITICAL: Prevent AVURLAsset from doing synchronous network validation
-            // AVURLAssetPreferPreciseDurationAndTimingKey: false prevents blocking network calls
-            var options: [String: Any] = [
-                AVURLAssetPreferPreciseDurationAndTimingKey: false
-            ]
+            let isRemoteUrl = url.scheme == "http" || url.scheme == "https"
+            let playerItem: AVPlayerItem
 
-            if let headers = headers {
-                options["AVURLAssetHTTPHeaderFieldsKey"] = headers
-            }
-
-            let asset = AVURLAsset(url: url, options: options)
-            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ AVURLAsset created (took \(String(format: "%.3f", Date().timeIntervalSince1970 - assetStart))s)")
-
-            // Preload essential properties asynchronously to prevent main thread blocking
-            // when AVPlayer tries to access them during replaceCurrentItem
-            let keysToLoad = ["tracks", "duration", "playable"]
-            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Starting loadValuesAsynchronously for: \(keysToLoad)...")
-            let loadStart = Date().timeIntervalSince1970
-            asset.loadValuesAsynchronously(forKeys: keysToLoad) { [weak self, t0] in
-                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 📥 loadValuesAsynchronously CALLBACK (took \(String(format: "%.3f", Date().timeIntervalSince1970 - loadStart))s)")
-                print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ⚠️" : "BACKGROUND ✓")")
-                guard let self = self else { return }
-
-                // Verify all keys loaded successfully
-                var allKeysLoaded = true
-                for key in keysToLoad {
-                    var error: NSError?
-                    let status = asset.statusOfValue(forKey: key, error: &error)
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s]   Property '\(key)': \(status.rawValue == 2 ? "✓ loaded" : "✗ status=\(status.rawValue)")")
-                    if status == .failed {
-                        print("❌ Failed to load asset property '\(key)': \(error?.localizedDescription ?? "unknown error")")
-                        allKeysLoaded = false
-                        DispatchQueue.main.async {
-                            self.sendEvent("error", data: ["message": "Failed to load video metadata: \(error?.localizedDescription ?? "unknown")"])
-                        }
-                        return
-                    } else if status == .cancelled {
-                        print("⚠️ Loading cancelled for property '\(key)'")
-                        allKeysLoaded = false
-                        return
-                    }
-                }
-
-                guard allKeysLoaded else { return }
-                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ All asset properties preloaded")
-
-                // Now create the player item with the fully loaded asset
-                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Creating AVPlayerItem...")
+            if isRemoteUrl {
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 🌐 Remote URL - creating AVPlayerItem directly (no preloading)...")
                 let itemStart = Date().timeIntervalSince1970
-                let playerItem = AVPlayerItem(asset: asset)
-                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ AVPlayerItem created (took \(String(format: "%.3f", Date().timeIntervalSince1970 - itemStart))s)")
 
-                // --- Skip HDR settings - AVPlayer handles tone-mapping automatically ---
-                // Removed video composition code that was blocking for 5+ seconds
-                // Modern AVPlayer automatically tone-maps HDR to SDR when needed
-                if !self.enableHDR {
-                    print("🎨 HDR disabled - AVPlayer will automatically tone-map HDR content to SDR")
+                if let headers = headers, !headers.isEmpty {
+                    // For remote URLs with headers, we still need AVURLAsset
+                    let options: [String: Any] = [
+                        "AVURLAssetHTTPHeaderFieldsKey": headers
+                    ]
+                    let asset = AVURLAsset(url: url, options: options)
+                    playerItem = AVPlayerItem(asset: asset)
                 } else {
-                    print("🎨 HDR enabled - allowing native HDR playback")
+                    // For remote URLs without headers, use the direct initializer
+                    // This is MUCH faster and non-blocking for streaming content
+                    playerItem = AVPlayerItem(url: url)
                 }
 
-                // Apply to player on main thread - should be fast now since asset is preloaded
-                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Dispatching to MAIN thread...")
-                let mainDispatchTime = Date().timeIntervalSince1970
-                DispatchQueue.main.async { [weak self, playerItem, t0] in
-                    let mainEnter = Date().timeIntervalSince1970
-                    print("⏱️ [T+\(String(format: "%.3f", mainEnter - t0))s] ▶️▶️ ENTERED MAIN THREAD (dispatch lag: \(String(format: "%.3f", mainEnter - mainDispatchTime))s)")
-                    print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ✓" : "BACKGROUND ⚠️")")
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ AVPlayerItem created directly (took \(String(format: "%.3f", Date().timeIntervalSince1970 - itemStart))s)")
+
+                // Continue with the rest of the setup immediately - no waiting!
+                self.setupPlayerItem(playerItem, autoPlay: autoPlay, t0: t0)
+
+            } else {
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 📁 Local file - preloading with AVURLAsset...")
+                let assetStart = Date().timeIntervalSince1970
+
+                var options: [String: Any] = [:]
+                if let headers = headers {
+                    options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+                }
+
+                let asset = AVURLAsset(url: url, options: options)
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ AVURLAsset created (took \(String(format: "%.3f", Date().timeIntervalSince1970 - assetStart))s)")
+
+                // Preload essential properties for local files (fast!)
+                let keysToLoad = ["tracks", "duration", "playable"]
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Starting loadValuesAsynchronously for: \(keysToLoad)...")
+                let loadStart = Date().timeIntervalSince1970
+                asset.loadValuesAsynchronously(forKeys: keysToLoad) { [weak self, t0] in
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 📥 loadValuesAsynchronously CALLBACK (took \(String(format: "%.3f", Date().timeIntervalSince1970 - loadStart))s)")
+                    print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ⚠️" : "BACKGROUND ✓")")
                     guard let self = self else { return }
 
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Calling replaceCurrentItem...")
-                    let replaceStart = Date().timeIntervalSince1970
-                    self.player?.replaceCurrentItem(with: playerItem)
-                    let replaceEnd = Date().timeIntervalSince1970
-                    print("⏱️ [T+\(String(format: "%.3f", replaceEnd - t0))s] ✅✅ replaceCurrentItem COMPLETED (took \(String(format: "%.3f", replaceEnd - replaceStart))s)")
-
-                    // --- Set up observers for buffer status and player state ---
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Adding observers...")
-                    let obsStart = Date().timeIntervalSince1970
-                    self.addObservers(to: playerItem)
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Observers added (took \(String(format: "%.3f", Date().timeIntervalSince1970 - obsStart))s)")
-
-                    // --- Set up periodic time observer for Now Playing elapsed time updates ---
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Setting up periodic time observer...")
-                    let timeObsStart = Date().timeIntervalSince1970
-                    self.setupPeriodicTimeObserver()
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Time observer setup (took \(String(format: "%.3f", Date().timeIntervalSince1970 - timeObsStart))s)")
-
-                    // --- Listen for end of playback ---
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Adding notification observer...")
-                    let notifStart = Date().timeIntervalSince1970
-                    NotificationCenter.default.addObserver(
-                        self,
-                        selector: #selector(self.videoDidEnd),
-                        name: .AVPlayerItemDidPlayToEndTime,
-                        object: playerItem
-                    )
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Notification observer added (took \(String(format: "%.3f", Date().timeIntervalSince1970 - notifStart))s)")
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ◀️◀️ EXITING MAIN THREAD")
-                }
-
-                // --- Observe status (wait for ready) ---
-                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Setting up status observer...")
-                var statusObserver: NSKeyValueObservation?
-                statusObserver = playerItem.observe(\.status, options: [.initial, .new]) { [weak self, t0] item, _ in
-                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 📢📢 Status observer callback - status: \(item.status.rawValue)")
-                    print("⏱️ Thread: \(Thread.isMainThread ? "MAIN" : "BACKGROUND")")
-                    guard let self = self else {
-                        return
+                    // Verify all keys loaded successfully
+                    var allKeysLoaded = true
+                    for key in keysToLoad {
+                        var error: NSError?
+                        let status = asset.statusOfValue(forKey: key, error: &error)
+                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s]   Property '\(key)': \(status.rawValue == 2 ? "✓ loaded" : "✗ status=\(status.rawValue)")")
+                        if status == .failed {
+                            print("❌ Failed to load asset property '\(key)': \(error?.localizedDescription ?? "unknown error")")
+                            allKeysLoaded = false
+                            DispatchQueue.main.async {
+                                self.sendEvent("error", data: ["message": "Failed to load video metadata: \(error?.localizedDescription ?? "unknown")"])
+                            }
+                            return
+                        } else if status == .cancelled {
+                            print("⚠️ Loading cancelled for property '\(key)'")
+                            allKeysLoaded = false
+                            return
+                        }
                     }
 
-                    switch item.status {
-                    case .readyToPlay:
-                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 🎬🎬 Video ready to play!")
+                    guard allKeysLoaded else { return }
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ All asset properties preloaded")
 
-                        // Send loaded event immediately WITHOUT duration
-                        // Duration will be sent separately once it's available
-                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Sending 'loaded' event...")
-                        let loadedStart = Date().timeIntervalSince1970
-                        self.sendEvent("loaded")
-                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ 'loaded' event sent (took \(String(format: "%.3f", Date().timeIntervalSince1970 - loadedStart))s)")
+                    // Now create the player item with the fully loaded asset
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Creating AVPlayerItem...")
+                    let itemStart = Date().timeIntervalSince1970
+                    let playerItem = AVPlayerItem(asset: asset)
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ AVPlayerItem created (took \(String(format: "%.3f", Date().timeIntervalSince1970 - itemStart))s)")
 
-                        // Get duration asynchronously to avoid blocking the main thread
-                        // Accessing item.duration can block while asset metadata loads
-                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Dispatching to BG to get duration...")
-                        DispatchQueue.global(qos: .userInitiated).async { [weak self, weak item, t0] in
-                            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] In BG thread, accessing item.duration...")
-                            guard let self = self, let item = item else { return }
-
-                            let durStart = Date().timeIntervalSince1970
-                            let duration = item.duration
-                            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ item.duration accessed (took \(String(format: "%.3f", Date().timeIntervalSince1970 - durStart))s)")
-                            let durationSeconds = CMTimeGetSeconds(duration)
-
-                            // Send duration update event if valid
-                            // MUST send on main thread - Flutter requires all channel messages on main thread
-                            if durationSeconds.isFinite && !durationSeconds.isNaN {
-                                let totalDuration = Int(durationSeconds * 1000) // milliseconds
-                                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Duration: \(totalDuration)ms, dispatching to MAIN to send event...")
-                                let mainDispatch2 = Date().timeIntervalSince1970
-                                DispatchQueue.main.async {
-                                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ▶️ ON MAIN - sending durationChanged (dispatch lag: \(String(format: "%.3f", Date().timeIntervalSince1970 - mainDispatch2))s)...")
-                                    let sendStart = Date().timeIntervalSince1970
-                                    self.sendEvent("durationChanged", data: [
-                                        "duration": totalDuration
-                                    ])
-                                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅✅ durationChanged sent (took \(String(format: "%.3f", Date().timeIntervalSince1970 - sendStart))s)")
-                                }
-                            } else {
-                                print("⚠️ Duration is not valid: \(durationSeconds)")
-                            }
-                        }
-
-                        // Set up PiP controller if available
-                        // Note: We need to get the player layer from the AVPlayerViewController
-                        // Check PiP support and send availability
-                        // Note: Do NOT create custom AVPictureInPictureController here
-                        // as it interferes with automatic PiP from AVPlayerViewController
-                        if #available(iOS 14.0, *) {
-                            if AVPictureInPictureController.isPictureInPictureSupported() {
-                                print("🎬 PiP is supported on this device")
-                                // Send availability immediately
-                                self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": true])
-                            } else {
-                                print("🎬 PiP is NOT supported on this device")
-                                self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": false])
-                            }
-                        } else {
-                            // iOS version too old for PiP
-                            self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": false])
-                        }
-
-                        // Auto play if requested
-                        if autoPlay {
-                            self.player?.play()
-                            // Play event will be sent automatically by timeControlStatus observer
-                        }
-
-                        // Release observer (avoid leaks)
-                        statusObserver?.invalidate()
-
-                    case .failed:
-                        let error = item.error?.localizedDescription ?? "Unknown error"
-                        print("❌ Failed to load video: \(error)")
-                        self.sendEvent("error", data: ["message": error])
-                        statusObserver?.invalidate()
-
-                    case .unknown:
-                        break
-
-                    @unknown default:
-                        break
-                    }
+                    // Continue with the rest of the setup
+                    self.setupPlayerItem(playerItem, autoPlay: autoPlay, t0: t0)
                 }
             }
 
             // --- Set up audio session asynchronously to avoid blocking ---
+            let audioStart = Date().timeIntervalSince1970
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Setting up audio session...")
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
                     try AVAudioSession.sharedInstance().setActive(true)
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Audio session configured")
                 } catch {
-                    print("❌ Failed to configure AVAudioSession during load: \(error.localizedDescription)")
+                    print("❌ Failed to configure AVAudioSession: \(error.localizedDescription)")
                 }
+            }
+        }
+    }
+
+    // Common setup function for both remote and local player items
+    private func setupPlayerItem(_ playerItem: AVPlayerItem, autoPlay: Bool, t0: TimeInterval) {
+        // --- Skip HDR settings - AVPlayer handles tone-mapping automatically ---
+        // Removed video composition code that was blocking for 5+ seconds
+        // Modern AVPlayer automatically tone-maps HDR to SDR when needed
+        if !self.enableHDR {
+            print("🎨 HDR disabled - AVPlayer will automatically tone-map HDR content to SDR")
+        } else {
+            print("🎨 HDR enabled - allowing native HDR playback")
+        }
+
+        // Apply to player on main thread
+        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Dispatching to MAIN thread...")
+        let mainDispatchTime = Date().timeIntervalSince1970
+        DispatchQueue.main.async { [weak self, playerItem, t0] in
+            let mainEnter = Date().timeIntervalSince1970
+            print("⏱️ [T+\(String(format: "%.3f", mainEnter - t0))s] ▶️▶️ ENTERED MAIN THREAD (dispatch lag: \(String(format: "%.3f", mainEnter - mainDispatchTime))s)")
+            print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ✓" : "BACKGROUND ⚠️")")
+            guard let self = self else { return }
+
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Calling replaceCurrentItem...")
+            let replaceStart = Date().timeIntervalSince1970
+            self.player?.replaceCurrentItem(with: playerItem)
+            let replaceEnd = Date().timeIntervalSince1970
+            print("⏱️ [T+\(String(format: "%.3f", replaceEnd - t0))s] ✅✅ replaceCurrentItem COMPLETED (took \(String(format: "%.3f", replaceEnd - replaceStart))s)")
+
+            // --- Set up observers for buffer status and player state ---
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Adding observers...")
+            let obsStart = Date().timeIntervalSince1970
+            self.addObservers(to: playerItem)
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Observers added (took \(String(format: "%.3f", Date().timeIntervalSince1970 - obsStart))s)")
+
+            // --- Set up periodic time observer for Now Playing elapsed time updates ---
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Setting up periodic time observer...")
+            let timeObsStart = Date().timeIntervalSince1970
+            self.setupPeriodicTimeObserver()
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Time observer setup (took \(String(format: "%.3f", Date().timeIntervalSince1970 - timeObsStart))s)")
+
+            // --- Listen for end of playback ---
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Adding notification observer...")
+            let notifStart = Date().timeIntervalSince1970
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(self.videoDidEnd),
+                name: .AVPlayerItemDidPlayToEndTime,
+                object: playerItem
+            )
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Notification observer added (took \(String(format: "%.3f", Date().timeIntervalSince1970 - notifStart))s)")
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ◀️◀️ EXITING MAIN THREAD")
+        }
+
+        // --- Observe status (wait for ready) ---
+        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Setting up status observer...")
+        var statusObserver: NSKeyValueObservation?
+        statusObserver = playerItem.observe(\.status, options: [.initial, .new]) { [weak self, t0] item, _ in
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 📢📢 Status observer callback - status: \(item.status.rawValue)")
+            print("⏱️ Thread: \(Thread.isMainThread ? "MAIN" : "BACKGROUND")")
+            guard let self = self else {
+                return
+            }
+
+            switch item.status {
+            case .readyToPlay:
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 🎬🎬 Video ready to play!")
+
+                // Send loaded event immediately WITHOUT duration
+                // Duration will be sent separately once it's available
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Sending 'loaded' event...")
+                let loadedStart = Date().timeIntervalSince1970
+                self.sendEvent("loaded")
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ 'loaded' event sent (took \(String(format: "%.3f", Date().timeIntervalSince1970 - loadedStart))s)")
+
+                // Get duration asynchronously to avoid blocking the main thread
+                // Accessing item.duration can block while asset metadata loads
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Dispatching to BG to get duration...")
+                DispatchQueue.global(qos: .userInitiated).async { [weak self, weak item, t0] in
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] In BG thread, accessing item.duration...")
+                    guard let self = self, let item = item else { return }
+
+                    let durStart = Date().timeIntervalSince1970
+                    let duration = item.duration
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ item.duration accessed (took \(String(format: "%.3f", Date().timeIntervalSince1970 - durStart))s)")
+                    let durationSeconds = CMTimeGetSeconds(duration)
+
+                    // Send duration update event if valid
+                    // MUST send on main thread - Flutter requires all channel messages on main thread
+                    if durationSeconds.isFinite && !durationSeconds.isNaN {
+                        let totalDuration = Int(durationSeconds * 1000) // milliseconds
+                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Duration: \(totalDuration)ms, dispatching to MAIN to send event...")
+                        let mainDispatch2 = Date().timeIntervalSince1970
+                        DispatchQueue.main.async {
+                            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ▶️ ON MAIN - sending durationChanged (dispatch lag: \(String(format: "%.3f", Date().timeIntervalSince1970 - mainDispatch2))s)...")
+                            let sendStart = Date().timeIntervalSince1970
+                            self.sendEvent("durationChanged", data: [
+                                "duration": totalDuration
+                            ])
+                            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅✅ durationChanged sent (took \(String(format: "%.3f", Date().timeIntervalSince1970 - sendStart))s)")
+                        }
+                    } else {
+                        print("⚠️ Duration is not valid: \(durationSeconds)")
+                    }
+                }
+
+                // Set up PiP controller if available
+                if #available(iOS 14.0, *) {
+                    if AVPictureInPictureController.isPictureInPictureSupported() {
+                        print("🎬 PiP is supported on this device")
+                        self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": true])
+                    } else {
+                        print("🎬 PiP is NOT supported on this device")
+                        self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": false])
+                    }
+                } else {
+                    self.sendEvent("pipAvailabilityChanged", data: ["isAvailable": false])
+                }
+
+                // Auto play if requested
+                if autoPlay {
+                    self.player?.play()
+                }
+
+                // Release observer (avoid leaks)
+                statusObserver?.invalidate()
+
+            case .failed:
+                let error = item.error?.localizedDescription ?? "Unknown error"
+                print("❌ Failed to load video: \(error)")
+                self.sendEvent("error", data: ["message": error])
+                statusObserver?.invalidate()
+
+            case .unknown:
+                break
+
+            @unknown default:
+                break
             }
         }
     }
