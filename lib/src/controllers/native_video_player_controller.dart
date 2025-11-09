@@ -287,6 +287,7 @@ class NativeVideoPlayerController {
         );
 
         // Notify all control listeners with time update event
+        // Use scheduleMicrotask to avoid blocking the main thread if listeners do expensive work
         if (_controlEventHandlers.isNotEmpty) {
           final currentControlEvent = PlayerControlEvent(
             state: PlayerControlState.timeUpdated,
@@ -298,20 +299,24 @@ class NativeVideoPlayerController {
                   newState.activityState == PlayerActivityState.buffering,
             },
           );
-          for (final handler in _controlEventHandlers) {
-            handler(currentControlEvent);
-          }
+          scheduleMicrotask(() {
+            for (final handler in _controlEventHandlers) {
+              handler(currentControlEvent);
+            }
+          });
         }
 
-        // Also notify activity listeners
+        // Also notify activity listeners asynchronously
         if (_activityEventHandlers.isNotEmpty) {
           final currentActivityEvent = PlayerActivityEvent(
             state: newState.activityState,
             data: null,
           );
-          for (final handler in _activityEventHandlers) {
-            handler(currentActivityEvent);
-          }
+          scheduleMicrotask(() {
+            for (final handler in _activityEventHandlers) {
+              handler(currentActivityEvent);
+            }
+          });
         }
       }
     }
@@ -769,26 +774,32 @@ class NativeVideoPlayerController {
     }
 
     // Notify activity event listeners with the current activity state
+    // Use scheduleMicrotask to avoid blocking platform view registration
     if (_activityEventHandlers.isNotEmpty) {
       final currentActivityEvent = PlayerActivityEvent(
         state: _state.activityState,
         data: null,
       );
-      for (final handler in _activityEventHandlers) {
-        handler(currentActivityEvent);
-      }
+      scheduleMicrotask(() {
+        for (final handler in _activityEventHandlers) {
+          handler(currentActivityEvent);
+        }
+      });
     }
 
     // Notify control event listeners if there's a current control state
+    // Use scheduleMicrotask to avoid blocking platform view registration
     if (_controlEventHandlers.isNotEmpty &&
         _state.controlState != PlayerControlState.none) {
       final currentControlEvent = PlayerControlEvent(
         state: _state.controlState,
         data: null,
       );
-      for (final handler in _controlEventHandlers) {
-        handler(currentControlEvent);
-      }
+      scheduleMicrotask(() {
+        for (final handler in _controlEventHandlers) {
+          handler(currentControlEvent);
+        }
+      });
     }
 
     // IMPORTANT: Set up event channel for EVERY platform view
@@ -859,10 +870,12 @@ class NativeVideoPlayerController {
             }
           }
 
-          // Notify activity listeners
-          for (final handler in _activityEventHandlers) {
-            handler(activityEvent);
-          }
+          // Notify activity listeners asynchronously to avoid blocking event processing
+          scheduleMicrotask(() {
+            for (final handler in _activityEventHandlers) {
+              handler(activityEvent);
+            }
+          });
         } else {
           final controlEvent = PlayerControlEvent.fromMap(map);
 
@@ -989,10 +1002,12 @@ class NativeVideoPlayerController {
             _updateState(_state.copyWith(controlState: controlEvent.state));
           }
 
-          // Notify control listeners
-          for (final handler in _controlEventHandlers) {
-            handler(controlEvent);
-          }
+          // Notify control listeners asynchronously to avoid blocking event processing
+          scheduleMicrotask(() {
+            for (final handler in _controlEventHandlers) {
+              handler(controlEvent);
+            }
+          });
         }
       },
       onError: (dynamic error) {
