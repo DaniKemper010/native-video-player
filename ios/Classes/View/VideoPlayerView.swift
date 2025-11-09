@@ -11,8 +11,8 @@ import QuartzCore
     // Global flag to track if media session has been initialized
     // The first access to MPNowPlayingInfoCenter blocks for 10+ seconds
     // Subsequent accesses are instant, so we only want to do the heavy initialization once
-    private static var hasInitializedMediaSession = false
-    private static let mediaSessionLock = NSLock()
+    static var hasInitializedMediaSession = false
+    static let mediaSessionLock = NSLock()
 
     var playerViewController: AVPlayerViewController
     var player: AVPlayer?
