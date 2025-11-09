@@ -7,6 +7,9 @@ import MediaPlayer
 extension VideoPlayerView {
 
     func handleLoad(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        let t0 = Date().timeIntervalSince1970
+        print("⏱️ [T+0.000s] ========== handleLoad START ==========")
+        print("⏱️ [T+0.000s] Thread: \(Thread.isMainThread ? "MAIN" : "BACKGROUND")")
         print("handleLoad called with arguments: \(String(describing: call.arguments))")
 
         guard let arguments = call.arguments as? [String: Any],
@@ -31,9 +34,11 @@ extension VideoPlayerView {
         }
 
         // Send loading event and return immediately to avoid blocking Flutter
+        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] About to send 'loading' event...")
         sendEvent("loading")
+        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Sent 'loading' event, returning result...")
         result(nil)  // Return immediately - don't block the UI
-        print("🎬 Returned from load() - loading will continue asynchronously")
+        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Returned from handleLoad - loading continues async")
 
         // Determine if this is likely an HLS stream
         let isHls = isHlsUrl(url)
@@ -86,21 +91,30 @@ extension VideoPlayerView {
 
         // --- Build player item asynchronously to avoid blocking UI ---
         // Creating AVURLAsset can block while iOS validates the URL and initializes
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Dispatching to background queue...")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, t0] in
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ▶️ ENTERED background queue")
+            print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ⚠️" : "BACKGROUND ✓")")
             guard let self = self else { return }
 
-            print("🎬 Creating AVURLAsset and preloading properties on background thread...")
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Creating AVURLAsset...")
+            let assetStart = Date().timeIntervalSince1970
             let asset: AVURLAsset
             if let headers = headers {
                 asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
             } else {
                 asset = AVURLAsset(url: url)
             }
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ AVURLAsset created (took \(String(format: "%.3f", Date().timeIntervalSince1970 - assetStart))s)")
 
             // Preload essential properties asynchronously to prevent main thread blocking
             // when AVPlayer tries to access them during replaceCurrentItem
             let keysToLoad = ["tracks", "duration", "playable"]
-            asset.loadValuesAsynchronously(forKeys: keysToLoad) { [weak self] in
+            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Starting loadValuesAsynchronously for: \(keysToLoad)...")
+            let loadStart = Date().timeIntervalSince1970
+            asset.loadValuesAsynchronously(forKeys: keysToLoad) { [weak self, t0] in
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 📥 loadValuesAsynchronously CALLBACK (took \(String(format: "%.3f", Date().timeIntervalSince1970 - loadStart))s)")
+                print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ⚠️" : "BACKGROUND ✓")")
                 guard let self = self else { return }
 
                 // Verify all keys loaded successfully
@@ -108,6 +122,7 @@ extension VideoPlayerView {
                 for key in keysToLoad {
                     var error: NSError?
                     let status = asset.statusOfValue(forKey: key, error: &error)
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s]   Property '\(key)': \(status.rawValue == 2 ? "✓ loaded" : "✗ status=\(status.rawValue)")")
                     if status == .failed {
                         print("❌ Failed to load asset property '\(key)': \(error?.localizedDescription ?? "unknown error")")
                         allKeysLoaded = false
@@ -123,10 +138,13 @@ extension VideoPlayerView {
                 }
 
                 guard allKeysLoaded else { return }
-                print("✅ All asset properties preloaded successfully")
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ All asset properties preloaded")
 
                 // Now create the player item with the fully loaded asset
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Creating AVPlayerItem...")
+                let itemStart = Date().timeIntervalSince1970
                 let playerItem = AVPlayerItem(asset: asset)
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ AVPlayerItem created (took \(String(format: "%.3f", Date().timeIntervalSince1970 - itemStart))s)")
 
                 // --- Skip HDR settings - AVPlayer handles tone-mapping automatically ---
                 // Removed video composition code that was blocking for 5+ seconds
@@ -138,59 +156,91 @@ extension VideoPlayerView {
                 }
 
                 // Apply to player on main thread - should be fast now since asset is preloaded
-                DispatchQueue.main.async { [weak self, playerItem] in
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Dispatching to MAIN thread...")
+                let mainDispatchTime = Date().timeIntervalSince1970
+                DispatchQueue.main.async { [weak self, playerItem, t0] in
+                    let mainEnter = Date().timeIntervalSince1970
+                    print("⏱️ [T+\(String(format: "%.3f", mainEnter - t0))s] ▶️▶️ ENTERED MAIN THREAD (dispatch lag: \(String(format: "%.3f", mainEnter - mainDispatchTime))s)")
+                    print("⏱️ Thread: \(Thread.isMainThread ? "MAIN ✓" : "BACKGROUND ⚠️")")
                     guard let self = self else { return }
-                    print("🎬 Applying preloaded asset to player...")
 
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Calling replaceCurrentItem...")
+                    let replaceStart = Date().timeIntervalSince1970
                     self.player?.replaceCurrentItem(with: playerItem)
+                    let replaceEnd = Date().timeIntervalSince1970
+                    print("⏱️ [T+\(String(format: "%.3f", replaceEnd - t0))s] ✅✅ replaceCurrentItem COMPLETED (took \(String(format: "%.3f", replaceEnd - replaceStart))s)")
 
                     // --- Set up observers for buffer status and player state ---
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Adding observers...")
+                    let obsStart = Date().timeIntervalSince1970
                     self.addObservers(to: playerItem)
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Observers added (took \(String(format: "%.3f", Date().timeIntervalSince1970 - obsStart))s)")
 
                     // --- Set up periodic time observer for Now Playing elapsed time updates ---
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Setting up periodic time observer...")
+                    let timeObsStart = Date().timeIntervalSince1970
                     self.setupPeriodicTimeObserver()
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Time observer setup (took \(String(format: "%.3f", Date().timeIntervalSince1970 - timeObsStart))s)")
 
                     // --- Listen for end of playback ---
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Adding notification observer...")
+                    let notifStart = Date().timeIntervalSince1970
                     NotificationCenter.default.addObserver(
                         self,
                         selector: #selector(self.videoDidEnd),
                         name: .AVPlayerItemDidPlayToEndTime,
                         object: playerItem
                     )
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ Notification observer added (took \(String(format: "%.3f", Date().timeIntervalSince1970 - notifStart))s)")
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ◀️◀️ EXITING MAIN THREAD")
                 }
 
                 // --- Observe status (wait for ready) ---
+                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Setting up status observer...")
                 var statusObserver: NSKeyValueObservation?
-                statusObserver = playerItem.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+                statusObserver = playerItem.observe(\.status, options: [.initial, .new]) { [weak self, t0] item, _ in
+                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 📢📢 Status observer callback - status: \(item.status.rawValue)")
+                    print("⏱️ Thread: \(Thread.isMainThread ? "MAIN" : "BACKGROUND")")
                     guard let self = self else {
                         return
                     }
 
                     switch item.status {
                     case .readyToPlay:
-                        print("🎬 Video ready to play")
+                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] 🎬🎬 Video ready to play!")
 
                         // Send loaded event immediately WITHOUT duration
                         // Duration will be sent separately once it's available
+                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Sending 'loaded' event...")
+                        let loadedStart = Date().timeIntervalSince1970
                         self.sendEvent("loaded")
+                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ 'loaded' event sent (took \(String(format: "%.3f", Date().timeIntervalSince1970 - loadedStart))s)")
 
                         // Get duration asynchronously to avoid blocking the main thread
                         // Accessing item.duration can block while asset metadata loads
-                        DispatchQueue.global(qos: .userInitiated).async { [weak self, weak item] in
+                        print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Dispatching to BG to get duration...")
+                        DispatchQueue.global(qos: .userInitiated).async { [weak self, weak item, t0] in
+                            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] In BG thread, accessing item.duration...")
                             guard let self = self, let item = item else { return }
 
+                            let durStart = Date().timeIntervalSince1970
                             let duration = item.duration
+                            print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅ item.duration accessed (took \(String(format: "%.3f", Date().timeIntervalSince1970 - durStart))s)")
                             let durationSeconds = CMTimeGetSeconds(duration)
 
                             // Send duration update event if valid
                             // MUST send on main thread - Flutter requires all channel messages on main thread
                             if durationSeconds.isFinite && !durationSeconds.isNaN {
                                 let totalDuration = Int(durationSeconds * 1000) // milliseconds
-                                print("🎬 Duration loaded: \(totalDuration)ms, sending update event")
+                                print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] Duration: \(totalDuration)ms, dispatching to MAIN to send event...")
+                                let mainDispatch2 = Date().timeIntervalSince1970
                                 DispatchQueue.main.async {
+                                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ▶️ ON MAIN - sending durationChanged (dispatch lag: \(String(format: "%.3f", Date().timeIntervalSince1970 - mainDispatch2))s)...")
+                                    let sendStart = Date().timeIntervalSince1970
                                     self.sendEvent("durationChanged", data: [
                                         "duration": totalDuration
                                     ])
+                                    print("⏱️ [T+\(String(format: "%.3f", Date().timeIntervalSince1970 - t0))s] ✅✅ durationChanged sent (took \(String(format: "%.3f", Date().timeIntervalSince1970 - sendStart))s)")
                                 }
                             } else {
                                 print("⚠️ Duration is not valid: \(durationSeconds)")
