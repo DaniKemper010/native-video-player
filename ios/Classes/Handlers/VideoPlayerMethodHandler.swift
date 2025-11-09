@@ -185,12 +185,15 @@ extension VideoPlayerView {
                         let durationSeconds = CMTimeGetSeconds(duration)
 
                         // Send duration update event if valid
+                        // MUST send on main thread - Flutter requires all channel messages on main thread
                         if durationSeconds.isFinite && !durationSeconds.isNaN {
                             let totalDuration = Int(durationSeconds * 1000) // milliseconds
                             print("🎬 Duration loaded: \(totalDuration)ms, sending update event")
-                            self.sendEvent("durationChanged", data: [
-                                "duration": totalDuration
-                            ])
+                            DispatchQueue.main.async {
+                                self.sendEvent("durationChanged", data: [
+                                    "duration": totalDuration
+                                ])
+                            }
                         } else {
                             print("⚠️ Duration is not valid: \(durationSeconds)")
                         }
