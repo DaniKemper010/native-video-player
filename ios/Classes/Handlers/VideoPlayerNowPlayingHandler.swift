@@ -76,11 +76,19 @@ extension VideoPlayerView {
     /// Sets up the Now Playing info for the Control Center and Lock Screen
     /// This can be called from a background thread safely
     func setupNowPlayingInfo(mediaInfo: [String: Any]) {
-        // Defer media session setup by 3 seconds to allow video to start playing smoothly first
-        // MPNowPlayingInfoCenter first access BLOCKS MAIN THREAD for 10+ seconds
-        // By delaying, the user gets immediate playback, and media controls appear later
-        // This is better UX than freezing the UI on play
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3.0) { [weak self] in
+        // Check if media session has already been initialized
+        // If not, delay the first initialization to avoid blocking during critical playback startup
+        VideoPlayerView.mediaSessionLock.lock()
+        let alreadyInitialized = VideoPlayerView.hasInitializedMediaSession
+        VideoPlayerView.mediaSessionLock.unlock()
+
+        let delay: TimeInterval = alreadyInitialized ? 0.0 : 3.0
+
+        if !alreadyInitialized {
+            print("🎵 First-time media session setup - delaying 3s to allow smooth playback start")
+        }
+
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self = self else { return }
 
             var nowPlayingInfo: [String: Any] = [:]
@@ -107,11 +115,22 @@ extension VideoPlayerView {
             // from the periodic time observer once the asset is ready
 
             // --- Commit initial metadata on main thread (MPNowPlayingInfoCenter requires main thread) ---
-            // This WILL block the main thread for 10+ seconds on first access, but user is already watching video
-            print("🎵 Setting up Now Playing info (this may block briefly on first time)")
+            // First access WILL block the main thread for 10+ seconds, but user is already watching video
             DispatchQueue.main.async {
+                // Mark as initialized BEFORE the blocking call
+                VideoPlayerView.mediaSessionLock.lock()
+                let isFirstTime = !VideoPlayerView.hasInitializedMediaSession
+                if isFirstTime {
+                    VideoPlayerView.hasInitializedMediaSession = true
+                    print("🎵 Setting up Now Playing info (FIRST TIME - will block ~10s)")
+                }
+                VideoPlayerView.mediaSessionLock.unlock()
+
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-                print("✅ Now Playing info set successfully")
+
+                if isFirstTime {
+                    print("✅ Media session initialized successfully (subsequent calls will be instant)")
+                }
             }
 
             // --- Load artwork asynchronously (if available) ---

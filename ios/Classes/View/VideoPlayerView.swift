@@ -8,6 +8,12 @@ import QuartzCore
 // MARK: - Main Video Player View
 
 @objc public class VideoPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler {
+    // Global flag to track if media session has been initialized
+    // The first access to MPNowPlayingInfoCenter blocks for 10+ seconds
+    // Subsequent accesses are instant, so we only want to do the heavy initialization once
+    private static var hasInitializedMediaSession = false
+    private static let mediaSessionLock = NSLock()
+
     var playerViewController: AVPlayerViewController
     var player: AVPlayer?
     private var methodChannel: FlutterMethodChannel
@@ -20,10 +26,10 @@ import QuartzCore
     let bitrateCheckInterval: TimeInterval = 5.0 // Check every 5 seconds
     var controllerId: Int?
     var pipController: AVPictureInPictureController?
-    
+
     // Store the platform view ID for registration
     var viewId: Int64 = 0
-    
+
     // Store whether automatic PiP was requested in creation params
     var canStartPictureInPictureAutomatically: Bool = true
 
