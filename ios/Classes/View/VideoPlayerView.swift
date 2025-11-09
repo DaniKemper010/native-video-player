@@ -226,17 +226,32 @@ import QuartzCore
             }
         }
 
-        // Pre-warm media subsystems IMMEDIATELY to avoid first-play blocking
-        // These systems only initialize once, and initialization blocks the UI thread
-        // MPNowPlayingInfoCenter and MPRemoteCommandCenter MUST be accessed on main thread
-        // Do this synchronously during init to ensure they're ready before user can click play
-        // This brief initialization is acceptable during view creation
-        print("🔥 Pre-warming media subsystems synchronously...")
-        _ = MPNowPlayingInfoCenter.default()
-        print("✅ Pre-warmed MPNowPlayingInfoCenter")
+        // Pre-warm media subsystems to avoid first-play blocking
+        // Do this asynchronously on main thread with high priority to ensure it executes
+        // before user can click play, but without blocking view initialization
+        DispatchQueue.main.async(qos: .userInitiated) { [weak self] in
+            guard let self = self else { return }
 
-        _ = MPRemoteCommandCenter.shared()
-        print("✅ Pre-warmed MPRemoteCommandCenter")
+            print("🔥 Pre-warming media subsystems...")
+
+            // Initialize MPNowPlayingInfoCenter
+            let nowPlayingCenter = MPNowPlayingInfoCenter.default()
+            print("✅ Pre-warmed MPNowPlayingInfoCenter")
+
+            // Initialize MPRemoteCommandCenter
+            _ = MPRemoteCommandCenter.shared()
+            print("✅ Pre-warmed MPRemoteCommandCenter")
+
+            // CRITICAL: Also initialize the nowPlayingInfo setter pathway
+            // The first time nowPlayingInfo is set, iOS initializes media item subsystems
+            // Set and immediately clear to warm up this code path
+            nowPlayingCenter.nowPlayingInfo = [
+                MPMediaItemPropertyTitle: "Initializing",
+                MPNowPlayingInfoPropertyPlaybackRate: 0.0
+            ]
+            nowPlayingCenter.nowPlayingInfo = nil
+            print("✅ Pre-warmed nowPlayingInfo setter pathway")
+        }
 
         // Also initialize URLSession on background thread
         DispatchQueue.global(qos: .utility).async {
