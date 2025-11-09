@@ -10,6 +10,32 @@ import UIKit
         registrar.register(factory, withId: "native_video_player")
         print("NativeVideoPlayerPlugin registered with id: native_video_player")
 
+        // Pre-warm iOS network stack in the background to avoid 4.5s freeze on first video load
+        // This triggers one-time network initialization (DNS, URLSession, certificate validation)
+        // without blocking the UI
+        DispatchQueue.global(qos: .utility).async {
+            print("🌐 Pre-warming network stack...")
+            let start = Date().timeIntervalSince1970
+
+            // Use a lightweight, reliable URL for pre-warming
+            // Google's generate_204 endpoint is designed for connectivity checks (returns empty response)
+            if let url = URL(string: "https://www.google.com/generate_204") {
+                var request = URLRequest(url: url)
+                request.httpMethod = "HEAD"  // HEAD request - no body download
+                request.timeoutInterval = 5.0
+
+                let task = URLSession.shared.dataTask(with: request) { _, response, error in
+                    let elapsed = Date().timeIntervalSince1970 - start
+                    if let error = error {
+                        print("🌐 Network pre-warm completed with error in \(String(format: "%.3f", elapsed))s: \(error.localizedDescription)")
+                    } else if let httpResponse = response as? HTTPURLResponse {
+                        print("🌐 ✅ Network stack pre-warmed successfully in \(String(format: "%.3f", elapsed))s (HTTP \(httpResponse.statusCode))")
+                    }
+                }
+                task.resume()
+            }
+        }
+
         // Register a method handler at the plugin level to forward calls to the appropriate view
         let channel = FlutterMethodChannel(name: "native_video_player", binaryMessenger: registrar.messenger())
         channel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
