@@ -100,32 +100,11 @@ extension VideoPlayerView {
             }
             print("🎬 AVURLAsset created, will apply to player on main thread...")
 
-            // --- Configure HDR settings if needed ---
-            // Disable HDR if enableHDR is false to prevent washed-out video appearance
+            // --- Skip HDR settings - AVPlayer handles tone-mapping automatically ---
+            // Removed video composition code that was blocking for 5+ seconds
+            // Modern AVPlayer automatically tone-maps HDR to SDR when needed
             if !self.enableHDR {
-                print("🎨 HDR disabled - forcing SDR color space via videoComposition")
-                if let asset = playerItem.asset as? AVURLAsset {
-                    // Get the first video track to determine the natural size
-                    let videoTracks = asset.tracks(withMediaType: .video)
-                    if let videoTrack = videoTracks.first {
-                        let videoComposition = AVMutableVideoComposition(propertiesOf: asset)
-
-                        // Ensure renderSize is set (required for videoComposition)
-                        if videoComposition.renderSize.width <= 0 || videoComposition.renderSize.height <= 0 {
-                            videoComposition.renderSize = videoTrack.naturalSize
-                        }
-
-                        // Use Rec.709 color space for HD SDR content
-                        videoComposition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
-                        videoComposition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
-                        videoComposition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
-
-                        playerItem.videoComposition = videoComposition
-                        print("✅ Applied SDR color space (Rec.709) to video composition with size: \(videoComposition.renderSize)")
-                    } else {
-                        print("⚠️ No video track found, skipping video composition")
-                    }
-                }
+                print("🎨 HDR disabled - AVPlayer will automatically tone-map HDR content to SDR")
             } else {
                 print("🎨 HDR enabled - allowing native HDR playback")
             }
