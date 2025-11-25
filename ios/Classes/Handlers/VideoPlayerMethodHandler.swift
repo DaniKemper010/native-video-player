@@ -1229,36 +1229,15 @@ extension VideoPlayerView {
                 displayName = languageCode
             }
 
-            // Try to get codec information if available
-            var codec: String? = nil
-            if let formatDescriptions = option.value(forKey: "formatDescriptions") as? [Any],
-               let firstFormat = formatDescriptions.first {
-                // Try to extract codec information
-                let description = String(describing: firstFormat)
-                if description.contains("'aac'") {
-                    codec = "AAC"
-                } else if description.contains("'ac-3'") || description.contains("ac3") {
-                    codec = "AC3"
-                } else if description.contains("'ec-3'") || description.contains("eac3") {
-                    codec = "EAC3"
-                } else if description.contains("mp3") {
-                    codec = "MP3"
-                }
-            }
-
-            var trackInfo: [String: Any] = [
+            let trackInfo: [String: Any] = [
                 "index": index,
                 "language": languageCode,
                 "displayName": displayName,
                 "isSelected": isSelected
             ]
 
-            if let codec = codec {
-                trackInfo["codec"] = codec
-            }
-
             tracks.append(trackInfo)
-            print("🔊 Found audio track: \(displayName) (\(languageCode)) \(codec ?? "") - Selected: \(isSelected)")
+            print("🔊 Found audio track: \(displayName) (\(languageCode)) - Selected: \(isSelected)")
         }
 
         print("🔊 Total audio tracks found: \(tracks.count)")
@@ -1321,27 +1300,12 @@ extension VideoPlayerView {
 
         print("🔊 Selected audio track: \(displayName) (\(languageCode))")
 
-        var eventData: [String: Any] = [
+        let eventData: [String: Any] = [
             "index": index,
             "language": languageCode,
             "displayName": displayName,
             "isSelected": true
         ]
-
-        // Try to add codec info
-        if let formatDescriptions = option.value(forKey: "formatDescriptions") as? [Any],
-           let firstFormat = formatDescriptions.first {
-            let description = String(describing: firstFormat)
-            if description.contains("'aac'") {
-                eventData["codec"] = "AAC"
-            } else if description.contains("'ac-3'") || description.contains("ac3") {
-                eventData["codec"] = "AC3"
-            } else if description.contains("'ec-3'") || description.contains("eac3") {
-                eventData["codec"] = "EAC3"
-            } else if description.contains("mp3") {
-                eventData["codec"] = "MP3"
-            }
-        }
 
         sendEvent("audioTrackChange", data: eventData)
 
