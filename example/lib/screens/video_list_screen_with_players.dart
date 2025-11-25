@@ -4,6 +4,7 @@ import '../models/video_item.dart';
 import '../widgets/video_player_card.dart';
 import 'video_detail_screen_full.dart';
 import 'subtitle_example_screen.dart';
+import 'audio_example_screen.dart';
 
 class VideoListScreenWithPlayers extends StatelessWidget {
   const VideoListScreenWithPlayers({super.key});
@@ -27,10 +28,19 @@ class VideoListScreenWithPlayers extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            icon: const Icon(
-              Icons.closed_caption,
-              color: Colors.black87,
-            ),
+            icon: const Icon(Icons.audiotrack, color: Colors.black87),
+            tooltip: 'Audio Track Examples',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AudioExampleScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.closed_caption, color: Colors.black87),
             tooltip: 'Subtitle Examples',
             onPressed: () {
               Navigator.push(

@@ -46,12 +46,12 @@ class NativeVideoPlayerAudioTrack {
   bool get isAuto => index == -1;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
-        'index': index,
-        'language': language,
-        'displayName': displayName,
-        if (codec != null) 'codec': codec,
-        'isSelected': isSelected,
-      };
+    'index': index,
+    'language': language,
+    'displayName': displayName,
+    if (codec != null) 'codec': codec,
+    'isSelected': isSelected,
+  };
 
   NativeVideoPlayerAudioTrack copyWith({
     int? index,

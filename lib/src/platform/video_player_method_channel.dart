@@ -145,7 +145,8 @@ class VideoPlayerMethodChannel {
   }
 
   /// Gets available subtitle tracks
-  Future<List<NativeVideoPlayerSubtitleTrack>> getAvailableSubtitleTracks() async {
+  Future<List<NativeVideoPlayerSubtitleTrack>>
+  getAvailableSubtitleTracks() async {
     try {
       final dynamic result = await _methodChannel.invokeMethod<dynamic>(
         'getAvailableSubtitleTracks',
@@ -154,8 +155,9 @@ class VideoPlayerMethodChannel {
       if (result is List) {
         final tracks = result
             .map(
-              (dynamic e) =>
-                  NativeVideoPlayerSubtitleTrack.fromMap(e as Map<dynamic, dynamic>),
+              (dynamic e) => NativeVideoPlayerSubtitleTrack.fromMap(
+                e as Map<dynamic, dynamic>,
+              ),
             )
             .toList();
         return tracks;
@@ -192,8 +194,9 @@ class VideoPlayerMethodChannel {
       if (result is List) {
         final tracks = result
             .map(
-              (dynamic e) =>
-                  NativeVideoPlayerAudioTrack.fromMap(e as Map<dynamic, dynamic>),
+              (dynamic e) => NativeVideoPlayerAudioTrack.fromMap(
+                e as Map<dynamic, dynamic>,
+              ),
             )
             .toList();
         return tracks;

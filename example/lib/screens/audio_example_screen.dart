@@ -17,7 +17,6 @@ class AudioExampleScreen extends StatefulWidget {
 class _AudioExampleScreenState extends State<AudioExampleScreen> {
   late NativeVideoPlayerController _controller;
   bool _isLoadingAudioTracks = false;
-  List<NativeVideoPlayerAudioTrack> _availableAudioTracks = [];
 
   // Using Apple's example HLS stream which has multiple audio tracks
   final video = VideoItem(
@@ -40,7 +39,9 @@ class _AudioExampleScreenState extends State<AudioExampleScreen> {
       id: 998,
       autoPlay: true,
       mediaInfo: NativeVideoPlayerMediaInfo(
-          title: video.title, subtitle: video.description),
+        title: video.title,
+        subtitle: video.description,
+      ),
     );
 
     _loadVideo(video.url);
@@ -66,8 +67,9 @@ class _AudioExampleScreenState extends State<AudioExampleScreen> {
       await _controller.load(url: url);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error loading video: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading video: $e')));
       }
     }
   }
@@ -83,11 +85,10 @@ class _AudioExampleScreenState extends State<AudioExampleScreen> {
       // Wait a bit for the video to fully load
       await Future.delayed(const Duration(seconds: 1));
 
-      final audioTracks = await _controller.getAvailableAudioTracks();
+      await _controller.getAvailableAudioTracks();
 
       if (mounted) {
         setState(() {
-          _availableAudioTracks = audioTracks;
           _isLoadingAudioTracks = false;
         });
       }
@@ -130,9 +131,10 @@ class _AudioExampleScreenState extends State<AudioExampleScreen> {
                   const Text(
                     'Audio Track Examples',
                     style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold),
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -158,15 +160,19 @@ class _AudioExampleScreenState extends State<AudioExampleScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.audiotrack,
-                            color: Colors.white, size: 24),
+                        const Icon(
+                          Icons.audiotrack,
+                          color: Colors.white,
+                          size: 24,
+                        ),
                         const SizedBox(width: 12),
                         const Text(
                           'Available Audio Tracks',
                           style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold),
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const Spacer(),
                         if (_isLoadingAudioTracks)
@@ -174,103 +180,51 @@ class _AudioExampleScreenState extends State<AudioExampleScreen> {
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    if (_availableAudioTracks.isEmpty && !_isLoadingAudioTracks)
-                      Text(
-                        'No audio tracks available for this video.\n'
-                        'Note: Audio tracks must be embedded in the video stream.',
-                        style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                      )
-                    else if (_availableAudioTracks.isNotEmpty) ...[
-                      Text(
-                        'Found ${_availableAudioTracks.length} audio track(s):',
-                        style:
-                            TextStyle(color: Colors.grey[300], fontSize: 14),
-                      ),
-                      const SizedBox(height: 12),
-                      Expanded(
-                        child: ListView.builder(
-                          itemCount: _availableAudioTracks.length,
-                          itemBuilder: (context, index) {
-                            final track = _availableAudioTracks[index];
-                            return Card(
-                              color: track.isSelected
-                                  ? Colors.blue.withOpacity(0.3)
-                                  : Colors.grey[850],
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                leading: Icon(
-                                  track.isSelected
-                                      ? Icons.check_circle
-                                      : Icons.audiotrack_outlined,
-                                  color: track.isSelected
-                                      ? Colors.blue
-                                      : Colors.grey[400],
-                                ),
-                                title: Text(
-                                  track.displayName,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: track.isSelected
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  '${track.language}${track.codec != null ? " • ${track.codec}" : ""}',
-                                  style: TextStyle(color: Colors.grey[400]),
-                                ),
-                                trailing: track.isSelected
-                                    ? const Chip(
-                                        label: Text('Active',
-                                            style: TextStyle(fontSize: 11)),
-                                        backgroundColor: Colors.blue,
-                                        labelStyle: TextStyle(color: Colors.white),
-                                        visualDensity: VisualDensity.compact,
-                                      )
-                                    : null,
-                              ),
-                            );
-                          },
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _showAudioPicker,
+                        icon: const Icon(Icons.settings_voice),
+                        label: const Text('Change Audio Track'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: _showAudioPicker,
-                          icon: const Icon(Icons.settings_voice),
-                          label: const Text('Change Audio Track'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
+                        color: Colors.blue.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                        border: Border.all(
+                          color: Colors.blue.withValues(alpha: 0.3),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.info_outline,
-                              color: Colors.blue[300], size: 20),
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.blue[300],
+                            size: 20,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               'Tap "Change Audio Track" to switch between available audio languages',
                               style: TextStyle(
-                                  color: Colors.blue[100], fontSize: 13),
+                                color: Colors.blue[100],
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ],
