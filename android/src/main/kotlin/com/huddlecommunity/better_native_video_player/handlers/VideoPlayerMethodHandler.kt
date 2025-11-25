@@ -67,6 +67,8 @@ class VideoPlayerMethodHandler(
             "getAvailableQualities" -> handleGetAvailableQualities(result)
             "getAvailableSubtitleTracks" -> handleGetAvailableSubtitleTracks(result)
             "setSubtitleTrack" -> handleSetSubtitleTrack(call, result)
+            "getAvailableAudioTracks" -> handleGetAvailableAudioTracks(result)
+            "setAudioTrack" -> handleSetAudioTrack(call, result)
             "enterFullScreen" -> handleEnterFullScreen(result)
             "exitFullScreen" -> handleExitFullScreen(result)
             "isAirPlayAvailable" -> handleIsAirPlayAvailable(result)
@@ -729,6 +731,188 @@ class VideoPlayerMethodHandler(
         } catch (e: Exception) {
             Log.e(TAG, "Error setting subtitle track: ${e.message}", e)
             result.error("ERROR", "Failed to set subtitle track: ${e.message}", null)
+        }
+    }
+
+    // MARK: - Audio Track Handling
+
+    /**
+     * Gets available audio tracks from the current player
+     */
+    private fun handleGetAvailableAudioTracks(result: MethodChannel.Result) {
+        try {
+            val tracks = mutableListOf<Map<String, Any>>()
+
+            // Get the current tracks from the player
+            val currentTracks = player.currentTracks
+
+            // Get track selection parameters to find the selected track
+            val trackSelectionParameters = player.trackSelectionParameters
+
+            // Iterate through all track groups
+            for (groupIndex in 0 until currentTracks.groups.size) {
+                val group = currentTracks.groups[groupIndex]
+
+                // Only process audio tracks
+                if (group.type == C.TRACK_TYPE_AUDIO) {
+                    // Iterate through all tracks in this group
+                    for (trackIndex in 0 until group.length) {
+                        val format = group.getTrackFormat(trackIndex)
+                        val isSelected = group.isTrackSelected(trackIndex)
+
+                        // Get language code (e.g., "en", "es", "fr")
+                        val languageCode = format.language ?: "unknown"
+
+                        // Get display name (use label if available, otherwise language code)
+                        val displayName = format.label?.takeIf { it.isNotEmpty() }
+                            ?: languageCode.let { code ->
+                                // Try to get localized language name
+                                try {
+                                    val locale = java.util.Locale(code)
+                                    locale.getDisplayLanguage(java.util.Locale.getDefault())
+                                        .takeIf { it.isNotEmpty() } ?: code
+                                } catch (e: Exception) {
+                                    code
+                                }
+                            }
+
+                        // Try to get codec information
+                        val codec = format.sampleMimeType?.let { mimeType ->
+                            when {
+                                mimeType.contains("aac", ignoreCase = true) -> "AAC"
+                                mimeType.contains("ac3", ignoreCase = true) -> "AC3"
+                                mimeType.contains("eac3", ignoreCase = true) -> "EAC3"
+                                mimeType.contains("mp3", ignoreCase = true) -> "MP3"
+                                mimeType.contains("opus", ignoreCase = true) -> "Opus"
+                                mimeType.contains("vorbis", ignoreCase = true) -> "Vorbis"
+                                else -> null
+                            }
+                        }
+
+                        val trackInfo = mutableMapOf(
+                            "index" to trackIndex,
+                            "language" to languageCode,
+                            "displayName" to displayName,
+                            "isSelected" to isSelected
+                        )
+
+                        // Add codec if available
+                        codec?.let { trackInfo["codec"] = it }
+
+                        tracks.add(trackInfo)
+                        Log.d(TAG, "🔊 Found audio track: $displayName ($languageCode) ${codec ?: ""} - Selected: $isSelected")
+                    }
+                }
+            }
+
+            Log.d(TAG, "🔊 Total audio tracks found: ${tracks.size}")
+            result.success(tracks)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting audio tracks: ${e.message}", e)
+            result.success(emptyList<Map<String, Any>>())
+        }
+    }
+
+    /**
+     * Sets the audio track
+     */
+    private fun handleSetAudioTrack(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val args = call.arguments as? Map<*, *>
+            val trackInfo = args?.get("track") as? Map<*, *>
+            val index = trackInfo?.get("index") as? Int
+
+            if (index == null) {
+                result.error("INVALID_TRACK", "Invalid audio track data", null)
+                return
+            }
+
+            // Index -1 means automatic selection (default)
+            if (index == -1) {
+                Log.d(TAG, "🔊 Setting audio track to automatic selection")
+
+                // Reset audio track selection to default
+                val newParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .setPreferredAudioLanguage(null)
+                    .build()
+
+                player.trackSelectionParameters = newParameters
+
+                eventHandler.sendEvent("audioTrackChange", mapOf(
+                    "index" to -1,
+                    "language" to "auto",
+                    "displayName" to "Auto",
+                    "isSelected" to false
+                ))
+
+                result.success(null)
+                return
+            }
+
+            // Find the track format for the requested index
+            val currentTracks = player.currentTracks
+            var trackFound = false
+            var selectedLanguage = "unknown"
+            var selectedDisplayName = "Unknown"
+            var selectedCodec: String? = null
+
+            for (groupIndex in 0 until currentTracks.groups.size) {
+                val group = currentTracks.groups[groupIndex]
+
+                if (group.type == C.TRACK_TYPE_AUDIO && index < group.length) {
+                    val format = group.getTrackFormat(index)
+                    selectedLanguage = format.language ?: "unknown"
+                    selectedDisplayName = format.label?.takeIf { it.isNotEmpty() }
+                        ?: selectedLanguage
+
+                    // Try to get codec information
+                    selectedCodec = format.sampleMimeType?.let { mimeType ->
+                        when {
+                            mimeType.contains("aac", ignoreCase = true) -> "AAC"
+                            mimeType.contains("ac3", ignoreCase = true) -> "AC3"
+                            mimeType.contains("eac3", ignoreCase = true) -> "EAC3"
+                            mimeType.contains("mp3", ignoreCase = true) -> "MP3"
+                            mimeType.contains("opus", ignoreCase = true) -> "Opus"
+                            mimeType.contains("vorbis", ignoreCase = true) -> "Vorbis"
+                            else -> null
+                        }
+                    }
+
+                    // Set preferred audio language to the selected track's language
+                    val parametersBuilder = player.trackSelectionParameters
+                        .buildUpon()
+                        .setPreferredAudioLanguage(selectedLanguage)
+
+                    player.trackSelectionParameters = parametersBuilder.build()
+
+                    trackFound = true
+                    break
+                }
+            }
+
+            if (!trackFound) {
+                result.error("INVALID_INDEX", "Invalid audio track index", null)
+                return
+            }
+
+            Log.d(TAG, "🔊 Selected audio track: $selectedDisplayName ($selectedLanguage)")
+
+            val eventData = mutableMapOf(
+                "index" to index,
+                "language" to selectedLanguage,
+                "displayName" to selectedDisplayName,
+                "isSelected" to true
+            )
+
+            selectedCodec?.let { eventData["codec"] = it }
+
+            eventHandler.sendEvent("audioTrackChange", eventData)
+
+            result.success(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting audio track: ${e.message}", e)
+            result.error("ERROR", "Failed to set audio track: ${e.message}", null)
         }
     }
 }

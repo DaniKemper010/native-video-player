@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../models/native_video_player_audio_track.dart';
 import '../models/native_video_player_quality.dart';
 import '../models/native_video_player_subtitle_track.dart';
 
@@ -178,6 +179,44 @@ class VideoPlayerMethodChannel {
       await _methodChannel.invokeMethod<void>('setSubtitleTrack', params);
     } catch (e) {
       debugPrint('Error calling setSubtitleTrack: $e');
+    }
+  }
+
+  /// Gets available audio tracks
+  Future<List<NativeVideoPlayerAudioTrack>> getAvailableAudioTracks() async {
+    try {
+      final dynamic result = await _methodChannel.invokeMethod<dynamic>(
+        'getAvailableAudioTracks',
+        <String, Object>{'viewId': primaryPlatformViewId},
+      );
+      if (result is List) {
+        final tracks = result
+            .map(
+              (dynamic e) =>
+                  NativeVideoPlayerAudioTrack.fromMap(e as Map<dynamic, dynamic>),
+            )
+            .toList();
+        return tracks;
+      }
+      debugPrint('No audio tracks found in result');
+      return <NativeVideoPlayerAudioTrack>[];
+    } catch (e) {
+      debugPrint('Error fetching audio tracks: $e');
+      return <NativeVideoPlayerAudioTrack>[];
+    }
+  }
+
+  /// Sets the audio track
+  /// Pass a track with index -1 or use NativeVideoPlayerAudioTrack.auto() for automatic selection
+  Future<void> setAudioTrack(NativeVideoPlayerAudioTrack track) async {
+    try {
+      final Map<String, Object> params = <String, Object>{
+        'viewId': primaryPlatformViewId,
+        'track': track.toMap(),
+      };
+      await _methodChannel.invokeMethod<void>('setAudioTrack', params);
+    } catch (e) {
+      debugPrint('Error calling setAudioTrack: $e');
     }
   }
 

@@ -1,4 +1,5 @@
 import '../enums/native_video_player_event.dart';
+import 'native_video_player_audio_track.dart';
 import 'native_video_player_quality.dart';
 import 'native_video_player_subtitle_track.dart';
 
@@ -13,6 +14,7 @@ class NativeVideoPlayerState {
     this.speed = 1.0,
     this.qualities = const <NativeVideoPlayerQuality>[],
     this.subtitleTracks = const <NativeVideoPlayerSubtitleTrack>[],
+    this.audioTracks = const <NativeVideoPlayerAudioTrack>[],
     this.activityState = PlayerActivityState.idle,
     this.controlState = PlayerControlState.none,
     this.isPipEnabled = false,
@@ -46,6 +48,9 @@ class NativeVideoPlayerState {
 
   /// Available subtitle/caption tracks
   final List<NativeVideoPlayerSubtitleTrack> subtitleTracks;
+
+  /// Available audio tracks
+  final List<NativeVideoPlayerAudioTrack> audioTracks;
 
   /// Current activity state (playing, paused, buffering, etc.)
   final PlayerActivityState activityState;
@@ -81,6 +86,7 @@ class NativeVideoPlayerState {
     double? speed,
     List<NativeVideoPlayerQuality>? qualities,
     List<NativeVideoPlayerSubtitleTrack>? subtitleTracks,
+    List<NativeVideoPlayerAudioTrack>? audioTracks,
     PlayerActivityState? activityState,
     PlayerControlState? controlState,
     bool? isPipEnabled,
@@ -99,6 +105,7 @@ class NativeVideoPlayerState {
       speed: speed ?? this.speed,
       qualities: qualities ?? this.qualities,
       subtitleTracks: subtitleTracks ?? this.subtitleTracks,
+      audioTracks: audioTracks ?? this.audioTracks,
       activityState: activityState ?? this.activityState,
       controlState: controlState ?? this.controlState,
       isPipEnabled: isPipEnabled ?? this.isPipEnabled,
@@ -123,6 +130,7 @@ class NativeVideoPlayerState {
         other.speed == speed &&
         other.qualities == qualities &&
         other.subtitleTracks == subtitleTracks &&
+        other.audioTracks == audioTracks &&
         other.activityState == activityState &&
         other.controlState == controlState &&
         other.isPipEnabled == isPipEnabled &&
@@ -144,6 +152,7 @@ class NativeVideoPlayerState {
       speed,
       qualities,
       subtitleTracks,
+      audioTracks,
       activityState,
       controlState,
       isPipEnabled,

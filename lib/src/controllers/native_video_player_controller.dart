@@ -9,6 +9,7 @@ import 'package:floating/floating.dart';
 import '../enums/native_video_player_event.dart';
 import '../fullscreen/fullscreen_manager.dart';
 import '../fullscreen/fullscreen_video_player.dart';
+import '../models/native_video_player_audio_track.dart';
 import '../models/native_video_player_media_info.dart';
 import '../models/native_video_player_quality.dart';
 import '../models/native_video_player_state.dart';
@@ -1442,6 +1443,18 @@ class NativeVideoPlayerController {
   /// Pass a track with index -1 or use NativeVideoPlayerSubtitleTrack.off() to disable subtitles
   Future<void> setSubtitleTrack(NativeVideoPlayerSubtitleTrack track) async {
     await _methodChannel?.setSubtitleTrack(track);
+  }
+
+  /// Gets available audio tracks
+  Future<List<NativeVideoPlayerAudioTrack>> getAvailableAudioTracks() async {
+    final tracks = await _methodChannel?.getAvailableAudioTracks();
+    return tracks ?? <NativeVideoPlayerAudioTrack>[];
+  }
+
+  /// Sets the audio track
+  /// Pass a track with index -1 or use NativeVideoPlayerAudioTrack.auto() for automatic selection
+  Future<void> setAudioTrack(NativeVideoPlayerAudioTrack track) async {
+    await _methodChannel?.setAudioTrack(track);
   }
 
   /// Returns whether Picture-in-Picture is available on this device

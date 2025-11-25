@@ -21,7 +21,8 @@ A Flutter plugin for native video playback on iOS and Android with advanced feat
 - ✅ Playback controls: play, pause, seek, volume, speed (0.25x - 2.0x)
 - ✅ Quality selection for HLS streams with real-time switching
 - ✅ **Subtitle/Closed Caption support** for HLS streams (VOD and Live) with language selection
-- ✅ **Separated event streams**: Activity events (play/pause/buffering) and Control events (quality/speed/PiP/fullscreen)
+- ✅ **Multi-audio track support** - Switch between different audio languages (English, Spanish, French, etc.) and codecs
+- ✅ **Separated event streams**: Activity events (play/pause/buffering) and Control events (quality/speed/PiP/fullscreen/audio/subtitle)
 - ✅ **Individual property streams**: Dedicated streams for position, duration, speed, state, fullscreen, PiP, AirPlay, and quality
 - ✅ Real-time playback position tracking with **buffered position indicator**
 - ✅ Custom HTTP headers support for video requests
@@ -535,6 +536,90 @@ final subtitles = await _controller.getAvailableSubtitleTracks();
 - Both platforms support WebVTT and other standard subtitle formats embedded in HLS streams
 
 See the `subtitle_example_screen.dart` in the example app for a complete implementation including a subtitle picker modal with font size controls.
+
+#### Multi-Audio Track Support
+
+The plugin supports multiple audio tracks, allowing users to switch between different audio languages or formats. Audio tracks must be embedded in the video stream (HLS or MP4 container).
+
+**Get Available Audio Tracks:**
+```dart
+// Get all available audio tracks
+final audioTracks = await _controller.getAvailableAudioTracks();
+
+// Check available audio languages and codecs
+for (final track in audioTracks) {
+  print('${track.displayName} (${track.language}) - Codec: ${track.codec} - Selected: ${track.isSelected}');
+}
+```
+
+**Select an Audio Track:**
+```dart
+// Select an audio track by passing the track object
+if (audioTracks.isNotEmpty) {
+  await _controller.setAudioTrack(audioTracks.first);
+}
+
+// Set to automatic selection (default)
+await _controller.setAudioTrack(NativeVideoPlayerAudioTrack.auto());
+```
+
+**Using the Audio Picker Modal:**
+
+A ready-to-use audio picker modal is included in the example app with the following features:
+- Display all available audio tracks with language and codec information
+- Select different audio languages
+- Automatic selection option
+- Beautiful Material Design UI
+
+```dart
+import 'package:better_native_video_player_example/widgets/audio_picker_modal.dart';
+
+// Show the audio picker modal
+showAudioPicker(context, _controller);
+```
+
+**Listen for Audio Track Changes:**
+```dart
+_controller.addControlListener((event) {
+  if (event.state == PlayerControlState.audioTrackChanged) {
+    print('Audio track changed: ${event.data}');
+    // Reload audio tracks to update UI
+    final tracks = await _controller.getAvailableAudioTracks();
+  }
+});
+```
+
+**Example Videos with Multiple Audio Tracks:**
+```dart
+// Apple's example HLS stream with multiple audio languages
+await _controller.load(
+  url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
+);
+
+// After loading, get available audio tracks
+final audioTracks = await _controller.getAvailableAudioTracks();
+```
+
+**Important Notes:**
+- Audio tracks must be embedded in the video stream (HLS manifest or MP4 container)
+- For HLS: Audio tracks are defined in the master.m3u8 manifest as alternate audio renditions
+- For MP4: Multiple audio tracks can be muxed into the container
+- External audio files are not currently supported
+- Audio tracks are automatically detected from the stream
+- Codec information (AAC, AC3, EAC3, MP3, Opus, Vorbis) is displayed when available
+
+**Platform-Specific Behavior:**
+- **iOS**: Uses AVFoundation's `AVMediaSelectionGroup` with `.audible` characteristic for audio track management
+- **Android**: Uses ExoPlayer's audio track selection API with `C.TRACK_TYPE_AUDIO`
+- Both platforms support common audio codecs including AAC, AC3/E-AC3 (Dolby Digital), MP3, Opus, and Vorbis
+
+**Use Cases:**
+- **Multi-language content**: Switch between English, Spanish, French, etc.
+- **Audio descriptions**: Provide accessibility for visually impaired users
+- **Commentary tracks**: Alternative audio for sports, movies, or educational content
+- **Codec preferences**: Choose between different audio quality levels (AAC vs AC3)
+
+See the `audio_example_screen.dart` in the example app for a complete implementation including an audio picker modal and track display.
 
 #### Separated Event Handling
 

@@ -1187,4 +1187,164 @@ extension VideoPlayerView {
 
         result(nil)
     }
+
+    // MARK: - Audio Track Handling
+
+    func handleGetAvailableAudioTracks(result: @escaping FlutterResult) {
+        guard let playerItem = player?.currentItem,
+              let asset = playerItem.asset as? AVURLAsset else {
+            result([])
+            return
+        }
+
+        // Get all media selection options for audible characteristics (audio tracks)
+        guard let mediaSelectionGroup = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else {
+            print("🔊 No audio tracks available")
+            result([])
+            return
+        }
+
+        var tracks: [[String: Any]] = []
+
+        // Get currently selected audio option
+        let currentSelection = playerItem.currentMediaSelection.selectedMediaOption(in: mediaSelectionGroup)
+
+        // Add each audio option
+        for (index, option) in mediaSelectionGroup.options.enumerated() {
+            let isSelected = option == currentSelection
+
+            // Get language code (e.g., "en", "es", "fr")
+            let languageCode = option.extendedLanguageTag ?? option.locale?.identifier ?? "unknown"
+
+            // Get display name (e.g., "English", "Spanish", "French")
+            var displayName = option.displayName
+
+            // If display name is empty, try to get it from locale
+            if displayName.isEmpty, let locale = option.locale {
+                displayName = Locale.current.localizedString(forIdentifier: locale.identifier) ?? languageCode
+            }
+
+            // If still empty, use language code
+            if displayName.isEmpty {
+                displayName = languageCode
+            }
+
+            // Try to get codec information if available
+            var codec: String? = nil
+            if let formatDescriptions = option.value(forKey: "formatDescriptions") as? [Any],
+               let firstFormat = formatDescriptions.first {
+                // Try to extract codec information
+                let description = String(describing: firstFormat)
+                if description.contains("'aac'") {
+                    codec = "AAC"
+                } else if description.contains("'ac-3'") || description.contains("ac3") {
+                    codec = "AC3"
+                } else if description.contains("'ec-3'") || description.contains("eac3") {
+                    codec = "EAC3"
+                } else if description.contains("mp3") {
+                    codec = "MP3"
+                }
+            }
+
+            var trackInfo: [String: Any] = [
+                "index": index,
+                "language": languageCode,
+                "displayName": displayName,
+                "isSelected": isSelected
+            ]
+
+            if let codec = codec {
+                trackInfo["codec"] = codec
+            }
+
+            tracks.append(trackInfo)
+            print("🔊 Found audio track: \(displayName) (\(languageCode)) \(codec ?? "") - Selected: \(isSelected)")
+        }
+
+        print("🔊 Total audio tracks found: \(tracks.count)")
+        result(tracks)
+    }
+
+    func handleSetAudioTrack(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let trackInfo = args["track"] as? [String: Any],
+              let index = trackInfo["index"] as? Int else {
+            result(FlutterError(code: "INVALID_TRACK", message: "Invalid audio track data", details: nil))
+            return
+        }
+
+        guard let playerItem = player?.currentItem,
+              let asset = playerItem.asset as? AVURLAsset else {
+            result(FlutterError(code: "NO_PLAYER", message: "No player item available", details: nil))
+            return
+        }
+
+        guard let mediaSelectionGroup = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else {
+            result(FlutterError(code: "NO_AUDIO_TRACKS", message: "No audio tracks available", details: nil))
+            return
+        }
+
+        // Index -1 means automatic selection (default)
+        if index == -1 {
+            print("🔊 Setting audio track to automatic selection")
+            playerItem.select(nil, in: mediaSelectionGroup)
+            sendEvent("audioTrackChange", data: [
+                "index": -1,
+                "language": "auto",
+                "displayName": "Auto",
+                "isSelected": false
+            ])
+            result(nil)
+            return
+        }
+
+        // Validate index
+        guard index >= 0 && index < mediaSelectionGroup.options.count else {
+            result(FlutterError(code: "INVALID_INDEX", message: "Invalid audio track index", details: nil))
+            return
+        }
+
+        // Select the audio option
+        let option = mediaSelectionGroup.options[index]
+        playerItem.select(option, in: mediaSelectionGroup)
+
+        let languageCode = option.extendedLanguageTag ?? option.locale?.identifier ?? "unknown"
+        var displayName = option.displayName
+
+        if displayName.isEmpty, let locale = option.locale {
+            displayName = Locale.current.localizedString(forIdentifier: locale.identifier) ?? languageCode
+        }
+
+        if displayName.isEmpty {
+            displayName = languageCode
+        }
+
+        print("🔊 Selected audio track: \(displayName) (\(languageCode))")
+
+        var eventData: [String: Any] = [
+            "index": index,
+            "language": languageCode,
+            "displayName": displayName,
+            "isSelected": true
+        ]
+
+        // Try to add codec info
+        if let formatDescriptions = option.value(forKey: "formatDescriptions") as? [Any],
+           let firstFormat = formatDescriptions.first {
+            let description = String(describing: firstFormat)
+            if description.contains("'aac'") {
+                eventData["codec"] = "AAC"
+            } else if description.contains("'ac-3'") || description.contains("ac3") {
+                eventData["codec"] = "AC3"
+            } else if description.contains("'ec-3'") || description.contains("eac3") {
+                eventData["codec"] = "EAC3"
+            } else if description.contains("mp3") {
+                eventData["codec"] = "MP3"
+            }
+        }
+
+        sendEvent("audioTrackChange", data: eventData)
+
+        result(nil)
+    }
 }
