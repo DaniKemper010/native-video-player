@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.util.Log
 import androidx.media3.common.util.UnstableApi
+import com.huddlecommunity.better_native_video_player.handlers.PictureInPictureHandler
 import com.huddlecommunity.better_native_video_player.manager.SharedPlayerManager
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -31,6 +32,9 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
         // Store current activity
         private var currentActivity: Activity? = null
 
+        // PiP handler for detecting Picture-in-Picture mode changes
+        private var pipHandler: PictureInPictureHandler? = null
+
         fun registerView(view: VideoPlayerView, viewId: Long) {
             Log.d(TAG, "Registering view with id: $viewId")
             registeredViews[viewId] = view
@@ -48,6 +52,21 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
          * Used by MainActivity to trigger automatic PiP on user leave hint
          */
         fun getAllViews(): Collection<VideoPlayerView> = registeredViews.values
+
+        /**
+         * Sends PiP mode change event to all registered views
+         */
+        fun sendPipEventToAllViews(isInPipMode: Boolean) {
+            Log.d(TAG, "Sending PiP event to ${registeredViews.size} views: isInPipMode=$isInPipMode")
+            registeredViews.values.forEach { view ->
+                view.sendPipEvent(isInPipMode)
+            }
+        }
+
+        /**
+         * Returns whether the app is currently in PiP mode
+         */
+        fun isInPictureInPictureMode(): Boolean = pipHandler?.isInPictureInPictureMode() ?: false
     }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -131,20 +150,33 @@ class NativeVideoPlayerPlugin : FlutterPlugin, ActivityAware {
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         Log.d(TAG, "Plugin attached to activity: ${binding.activity}")
         currentActivity = binding.activity
+
+        // Set up PiP handler to detect PiP mode changes
+        pipHandler = PictureInPictureHandler { isInPipMode ->
+            sendPipEventToAllViews(isInPipMode)
+        }
+        pipHandler?.attach(binding.activity)
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
         Log.d(TAG, "Plugin detached from activity for config changes")
+        // Detach PiP handler but keep reference for reattachment
+        pipHandler?.detach()
         // Don't clear activity - it will be reattached
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         Log.d(TAG, "Plugin reattached to activity: ${binding.activity}")
         currentActivity = binding.activity
+
+        // Reattach PiP handler to new activity instance
+        pipHandler?.attach(binding.activity)
     }
 
     override fun onDetachedFromActivity() {
         Log.d(TAG, "Plugin detached from activity")
+        pipHandler?.detach()
+        pipHandler = null
         currentActivity = null
     }
 }

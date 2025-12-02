@@ -57,6 +57,10 @@ android {
         // Media notification style
         implementation("androidx.media:media:1.7.0")
 
+        // Activity library for PiP mode change detection
+        implementation("androidx.activity:activity-ktx:1.9.0")
+        implementation("androidx.core:core-ktx:1.13.0")
+
         testImplementation("org.jetbrains.kotlin:kotlin-test")
         testImplementation("org.mockito:mockito-core:5.0.0")
     }

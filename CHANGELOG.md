@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2025-12-02
+
+### Added
+- **Android PiP Mode Detection**: Implemented Picture-in-Picture mode change detection for Android
+  - Added `PictureInPictureHandler` class that uses `ComponentActivity.addOnPictureInPictureModeChangedListener()` (API 26+)
+  - Plugin now automatically sends `pipStart` and `pipStop` events to Flutter when PiP mode changes
+  - Events match iOS implementation format: `{"event": "pipStart/pipStop", "isPictureInPicture": true/false}`
+  - Player state is automatically synced after exiting PiP mode
+  - No additional code required in MainActivity - detection is handled automatically by the plugin
+
+### Fixed
+- **Android PiP Events**: Flutter now receives PiP state change notifications on Android, enabling proper UI updates when entering/exiting PiP mode
+
 ## [0.4.2] - 2025-11-27
 
 ### Added

@@ -615,8 +615,25 @@ class VideoPlayerView(
         }
     }
 
-    // PiP is now handled by the floating package on the Dart side
-    // All PiP-related methods have been removed
+    /**
+     * Sends PiP mode change event to Flutter
+     * Called by NativeVideoPlayerPlugin when PiP mode changes
+     */
+    fun sendPipEvent(isInPipMode: Boolean) {
+        if (isDisposed) {
+            Log.d(TAG, "Ignoring PiP event - view is disposed")
+            return
+        }
+
+        Log.d(TAG, "Sending PiP event: isInPipMode=$isInPipMode")
+        if (isInPipMode) {
+            eventHandler.sendEvent("pipStart", mapOf("isPictureInPicture" to true))
+        } else {
+            eventHandler.sendEvent("pipStop", mapOf("isPictureInPicture" to false))
+            // After exiting PiP, emit current state to sync UI
+            emitCurrentState()
+        }
+    }
 
     /**
      * Emits all current player states to ensure UI is in sync
