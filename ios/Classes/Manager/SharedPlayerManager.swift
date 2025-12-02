@@ -208,6 +208,30 @@ class SharedPlayerManager: NSObject {
         controllersWithManualPiP.removeAll()
     }
 
+    // MARK: - AirPlay State Management
+
+    /// Check if ANY player is currently using AirPlay (external playback active)
+    /// This is useful to prevent interrupting AirPlay when new players are created
+    func isAnyPlayerUsingAirPlay() -> Bool {
+        for (controllerId, player) in players {
+            if player.isExternalPlaybackActive {
+                print("🎬 [SharedPlayerManager] Found player using AirPlay: controller \(controllerId)")
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Get the controller ID of the player currently using AirPlay (if any)
+    func getAirPlayActiveControllerId() -> Int? {
+        for (controllerId, player) in players {
+            if player.isExternalPlaybackActive {
+                return controllerId
+            }
+        }
+        return nil
+    }
+
     // MARK: - AirPlay Route Detection
 
     /// Starts global AirPlay route detection

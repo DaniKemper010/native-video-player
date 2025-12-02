@@ -238,7 +238,8 @@ extension VideoPlayerView {
 
             // Ensure audio session is active before resuming playback
             // This is critical after interruptions (e.g., phone calls)
-            self.prepareAudioSession()
+            // Use force: true because user explicitly wants to play this video
+            self.prepareAudioSession(force: true)
 
             self.player?.play()
             self.sendEvent("play")

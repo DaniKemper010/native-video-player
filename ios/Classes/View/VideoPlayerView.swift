@@ -309,7 +309,24 @@ import QuartzCore
 
     /// Prepares and activates the audio session for video playback
     /// This MUST be called before starting playback to ensure audio continues when screen locks
-    func prepareAudioSession() {
+    /// - Parameter force: If true, always reconfigure. If false (default), skip if AirPlay is active on another player
+    func prepareAudioSession(force: Bool = false) {
+        // Check if another player is using AirPlay - we don't want to interrupt it
+        // unless this is a forced call (e.g., when user explicitly plays this video)
+        if !force {
+            let isAirPlayActiveElsewhere = SharedPlayerManager.shared.isAnyPlayerUsingAirPlay()
+            
+            // If AirPlay is active on a DIFFERENT controller, don't reconfigure the audio session
+            // This prevents interrupting the AirPlay stream when a new player view comes into view
+            if isAirPlayActiveElsewhere {
+                if let activeControllerId = SharedPlayerManager.shared.getAirPlayActiveControllerId(),
+                   activeControllerId != controllerId {
+                    print("⚠️ Skipping audio session configuration - AirPlay is active on controller \(activeControllerId)")
+                    return
+                }
+            }
+        }
+        
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
             try AVAudioSession.sharedInstance().setActive(true, options: [])

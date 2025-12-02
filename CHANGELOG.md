@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2025-12-02
+
+### Fixed
+- **iOS AirPlay Interruption When Multiple Players Exist**: Fixed critical issue where AirPlay would pause when a second video player came into view
+  - Added `isAnyPlayerUsingAirPlay()` method to `SharedPlayerManager` to detect active AirPlay sessions
+  - Added `getAirPlayActiveControllerId()` method to identify which controller is using AirPlay
+  - Modified `prepareAudioSession()` to accept a `force` parameter (defaults to `false`)
+  - When `force: false`, audio session configuration is skipped if another controller is actively using AirPlay
+  - Explicit user actions (play button, remote commands) use `force: true` to properly take over audio session
+  - Prevents audio session reconfiguration from interrupting existing AirPlay streams
+  - AirPlay now continues uninterrupted when navigating to screens with other video players
+
+### Technical Details
+- **iOS Implementation**: Enhanced audio session management to be AirPlay-aware
+  - `prepareAudioSession(force: false)` - Used during view init and video load, skips if AirPlay is active elsewhere
+  - `prepareAudioSession(force: true)` - Used when user explicitly plays, properly reconfigures audio session
+  - Maintains seamless AirPlay experience in apps with multiple video players (e.g., list + detail screens)
+
 ## [0.4.2] - 2025-11-27
 
 ### Added

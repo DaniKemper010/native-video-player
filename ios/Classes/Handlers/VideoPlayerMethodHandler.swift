@@ -287,7 +287,8 @@ extension VideoPlayerView {
     private func prepareForPlayback() {
         // CRITICAL: Activate audio session BEFORE calling player.play()
         // This ensures audio continues when the screen locks
-        prepareAudioSession()
+        // Use force: true because the user is explicitly playing this video
+        prepareAudioSession(force: true)
 
         // ALWAYS set media item on play to ensure this player has control
         // This is critical for both normal playback and PiP mode
