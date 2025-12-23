@@ -1286,7 +1286,19 @@ minSdkVersion 24
   ```
 - Note: `fullScreenPreferredOrientations` only applies when in fullscreen mode and does not affect the main app's orientation
 - If not specified, the `lockToLandscape` parameter controls fullscreen orientation behavior
-- When exiting fullscreen, the plugin automatically restores the app's original orientations
+- **Important**: If your app sets orientation preferences (e.g., portrait-only), you should register them with FullscreenManager to ensure proper restoration:
+  ```dart
+  // At app startup, set portrait-only
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+  
+  // Register with FullscreenManager so it knows what to restore
+  FullscreenManager.registerAppOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
+  ```
+- Alternatively, use `FullscreenManager.setPreferredOrientations()` instead of `SystemChrome.setPreferredOrientations()` - it automatically tracks orientations for restoration
 
 **Media notifications not showing:**
 - The plugin automatically configures `MediaSessionService`
