@@ -34,25 +34,16 @@ class FullscreenManager {
     // Save current orientation preferences before changing them
     _savedOrientations = List.from(_currentOrientations);
     // Hide system UI
-    await SystemChrome.setEnabledSystemUIMode(
-      SystemUiMode.immersiveSticky,
-      overlays: [],
-    );
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky, overlays: []);
 
     // Set orientation preferences for fullscreen
-    if (fullScreenPreferredOrientations != null &&
-        fullScreenPreferredOrientations.isNotEmpty) {
+    if (fullScreenPreferredOrientations != null && fullScreenPreferredOrientations.isNotEmpty) {
       // Use provided fullscreen orientations
-      await SystemChrome.setPreferredOrientations(
-        fullScreenPreferredOrientations,
-      );
+      await SystemChrome.setPreferredOrientations(fullScreenPreferredOrientations);
       _currentOrientations = List.from(fullScreenPreferredOrientations);
     } else if (lockToLandscape) {
       // Fall back to lockToLandscape behavior
-      final landscapeOrientations = [
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ];
+      final landscapeOrientations = [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight];
       await SystemChrome.setPreferredOrientations(landscapeOrientations);
       _currentOrientations = landscapeOrientations;
     } else {
@@ -73,18 +64,27 @@ class FullscreenManager {
   /// This method:
   /// - Restores system UI visibility
   /// - Restores original orientation preferences that were saved before entering fullscreen
+  /// - Clears saved orientations to ensure clean state
   static Future<void> exitFullscreen() async {
     // Restore system UI
-    await SystemChrome.setEnabledSystemUIMode(
-      SystemUiMode.edgeToEdge,
-      overlays: SystemUiOverlay.values,
-    );
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge, overlays: SystemUiOverlay.values);
 
     // Restore orientation preferences to what they were before fullscreen
     if (PlatformUtils.isAndroid || PlatformUtils.isIOS) {
-      final orientations = _savedOrientations ?? _currentOrientations;
+      // Use saved orientations if available, otherwise restore to all orientations
+      final orientations =
+          _savedOrientations ??
+          [
+            DeviceOrientation.portraitUp,
+            DeviceOrientation.portraitDown,
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ];
       await SystemChrome.setPreferredOrientations(orientations);
-      _currentOrientations = orientations;
+      _currentOrientations = List.from(orientations);
+
+      // Clear saved orientations to ensure clean state for next fullscreen entry
+      _savedOrientations = null;
     }
   }
 
@@ -107,9 +107,7 @@ class FullscreenManager {
   /// await FullscreenManager.exitFullscreen();
   /// // Automatically restores to portrait-only
   /// ```
-  static Future<void> setPreferredOrientations(
-    List<DeviceOrientation> orientations,
-  ) async {
+  static Future<void> setPreferredOrientations(List<DeviceOrientation> orientations) async {
     _currentOrientations = List.from(orientations);
     await SystemChrome.setPreferredOrientations(orientations);
   }
