@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Fullscreen Orientation Control**: Renamed `preferredOrientations` to `fullScreenPreferredOrientations` in `NativeVideoPlayerController`
+  - The parameter now only applies orientation restrictions when in fullscreen mode
+  - Does not interfere with the main app's orientation when not in fullscreen
+  - If not specified, falls back to `lockToLandscape` behavior
+  - **Breaking Change**: Users need to rename `preferredOrientations` to `fullScreenPreferredOrientations` in their code
+
 ## [0.4.2] - 2025-11-27
 
 ### Added
@@ -684,7 +693,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatically saves current orientation preferences when entering fullscreen
   - Restores original orientations when exiting fullscreen (no manual setup required)
   - Added `setPreferredOrientations()` helper method as optional drop-in replacement for `SystemChrome.setPreferredOrientations()`
-  - Added `preferredOrientations` parameter to `NativeVideoPlayerController` for easy orientation configuration
+  - Added `fullScreenPreferredOrientations` parameter to `NativeVideoPlayerController` for easy orientation configuration (renamed from `preferredOrientations` in a later version)
   - Supports per-controller orientation preferences (e.g., portrait-only apps can specify this when creating the controller)
 
 - **Tap-to-Hide Overlay**: Enhanced custom overlay interaction
@@ -710,7 +719,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `dart:async` import for `StreamSubscription` support
 
 ### Documentation
-- Updated `NativeVideoPlayerController` documentation with `preferredOrientations` usage examples
+- Updated `NativeVideoPlayerController` documentation with `fullScreenPreferredOrientations` usage examples (renamed from `preferredOrientations` in a later version)
 - Updated `FullscreenManager` documentation explaining automatic orientation tracking
 - Added comprehensive explanation of auto quality feature and buffer health thresholds
 

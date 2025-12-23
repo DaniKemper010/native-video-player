@@ -1277,15 +1277,16 @@ minSdkVersion 24
 
 **Orientation restoration:**
 - The plugin automatically saves and restores orientation preferences when entering/exiting fullscreen
-- To specify app orientation preferences, use the `preferredOrientations` parameter:
+- To specify orientations allowed in fullscreen mode, use the `fullScreenPreferredOrientations` parameter:
   ```dart
   final controller = NativeVideoPlayerController(
     id: 1,
-    preferredOrientations: [DeviceOrientation.portraitUp],
+    fullScreenPreferredOrientations: [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
   );
   ```
-- Alternatively, use `FullscreenManager.setPreferredOrientations()` before entering fullscreen
-- When exiting fullscreen, the plugin automatically restores your specified orientations
+- Note: `fullScreenPreferredOrientations` only applies when in fullscreen mode and does not affect the main app's orientation
+- If not specified, the `lockToLandscape` parameter controls fullscreen orientation behavior
+- When exiting fullscreen, the plugin automatically restores the app's original orientations
 
 **Media notifications not showing:**
 - The plugin automatically configures `MediaSessionService`

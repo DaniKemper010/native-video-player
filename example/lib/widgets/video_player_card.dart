@@ -46,8 +46,8 @@ class _VideoPlayerCardState extends State<VideoPlayerCard> {
           subtitle: widget.video.description,
           artworkUrl: widget.video.artworkUrl,
         ),
-        // Example: Restrict to portrait mode when not in fullscreen
-        // preferredOrientations: [DeviceOrientation.portraitUp],
+        // Example: Restrict orientations when in fullscreen mode
+        // fullScreenPreferredOrientations: [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
       );
 
       _controller!.addActivityListener(_handleActivityEvent);

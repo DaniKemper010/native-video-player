@@ -21,11 +21,16 @@ class FullscreenManager {
   /// This method:
   /// - Saves current orientation preferences automatically
   /// - Hides system UI (status bar, navigation bar on Android)
-  /// - Allows all orientations (or locks to landscape if specified)
+  /// - Sets orientation preferences based on provided parameters
   ///
   /// **Parameters:**
-  /// - lockToLandscape: If true, locks orientation to landscape modes only
-  static Future<void> enterFullscreen({bool lockToLandscape = true}) async {
+  /// - fullScreenPreferredOrientations: Optional list of orientations allowed in fullscreen.
+  ///   If provided, these orientations are used. If null, falls back to lockToLandscape behavior.
+  /// - lockToLandscape: If true and fullScreenPreferredOrientations is null, locks orientation to landscape modes only
+  static Future<void> enterFullscreen({
+    List<DeviceOrientation>? fullScreenPreferredOrientations,
+    bool lockToLandscape = true,
+  }) async {
     // Save current orientation preferences before changing them
     _savedOrientations = List.from(_currentOrientations);
     // Hide system UI
@@ -35,7 +40,15 @@ class FullscreenManager {
     );
 
     // Set orientation preferences for fullscreen
-    if (lockToLandscape) {
+    if (fullScreenPreferredOrientations != null &&
+        fullScreenPreferredOrientations.isNotEmpty) {
+      // Use provided fullscreen orientations
+      await SystemChrome.setPreferredOrientations(
+        fullScreenPreferredOrientations,
+      );
+      _currentOrientations = List.from(fullScreenPreferredOrientations);
+    } else if (lockToLandscape) {
+      // Fall back to lockToLandscape behavior
       final landscapeOrientations = [
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
@@ -43,6 +56,7 @@ class FullscreenManager {
       await SystemChrome.setPreferredOrientations(landscapeOrientations);
       _currentOrientations = landscapeOrientations;
     } else {
+      // Allow all orientations
       final allOrientations = [
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
@@ -108,7 +122,9 @@ class FullscreenManager {
   /// **Parameters:**
   /// - context: BuildContext for showing the dialog
   /// - builder: Widget builder for the fullscreen content
-  /// - lockToLandscape: If true, locks orientation to landscape
+  /// - fullScreenPreferredOrientations: Optional list of orientations allowed in fullscreen.
+  ///   If provided, these orientations are used. If null, falls back to lockToLandscape behavior.
+  /// - lockToLandscape: If true and fullScreenPreferredOrientations is null, locks orientation to landscape
   /// - onExit: Optional callback when fullscreen is exited
   ///
   /// **Returns:**
@@ -116,11 +132,15 @@ class FullscreenManager {
   static Future<T?> showFullscreenDialog<T>({
     required BuildContext context,
     required Widget Function(BuildContext) builder,
+    List<DeviceOrientation>? fullScreenPreferredOrientations,
     bool lockToLandscape = true,
     VoidCallback? onExit,
   }) async {
     // Enter fullscreen mode
-    await enterFullscreen(lockToLandscape: lockToLandscape);
+    await enterFullscreen(
+      fullScreenPreferredOrientations: fullScreenPreferredOrientations,
+      lockToLandscape: lockToLandscape,
+    );
 
     if (!context.mounted) {
       return null;

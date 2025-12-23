@@ -27,16 +27,17 @@ import '../services/airplay_state_manager.dart';
 /// final controller = NativeVideoPlayerController(
 ///   id: videoId,
 ///   autoPlay: true,
-///   preferredOrientations: [DeviceOrientation.portraitUp], // Optional
+///   fullScreenPreferredOrientations: [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight], // Optional
 /// );
 /// await controller.load(url: 'https://example.com/video.m3u8');
 /// ```
 ///
 /// **Orientation Control:**
-/// The `preferredOrientations` parameter allows you to specify which device
-/// orientations are allowed in your app. When exiting fullscreen, the player
-/// will automatically restore these orientations. If not specified, all
-/// orientations are allowed by default.
+/// The `fullScreenPreferredOrientations` parameter allows you to specify which device
+/// orientations are allowed when in fullscreen mode. These orientations only apply
+/// when the video player enters fullscreen mode and are automatically restored
+/// when exiting fullscreen. If not specified, the `lockToLandscape` parameter controls
+/// fullscreen orientation behavior.
 ///
 /// **Platform Communication:**
 /// - MethodChannel: Flutter → Native (play, pause, seek, etc.)
@@ -51,13 +52,8 @@ class NativeVideoPlayerController {
     this.lockToLandscape = true,
     this.enableHDR = true,
     this.enableLooping = false,
-    List<DeviceOrientation>? preferredOrientations,
-  }) {
-    // Set preferred orientations if provided
-    if (preferredOrientations != null) {
-      FullscreenManager.setPreferredOrientations(preferredOrientations);
-    }
-
+    List<DeviceOrientation>? fullScreenPreferredOrientations,
+  }) : fullScreenPreferredOrientations = fullScreenPreferredOrientations {
     // Set up app lifecycle listener for Android to hide overlay before PiP
     if (!kIsWeb && Platform.isAndroid) {
       WidgetsBinding.instance.addObserver(_AppLifecycleObserver(this));
@@ -133,6 +129,11 @@ class NativeVideoPlayerController {
   /// Whether to enable video looping (default: false)
   /// When set to true, the video will automatically restart from the beginning when it reaches the end
   final bool enableLooping;
+
+  /// Preferred orientations when in fullscreen mode
+  /// These orientations only apply when entering fullscreen and are restored when exiting
+  /// If null, the `lockToLandscape` parameter controls fullscreen orientation behavior
+  final List<DeviceOrientation>? fullScreenPreferredOrientations;
 
   /// BuildContext getter for showing Dart fullscreen dialog
   /// Returns a mounted context from any registered platform view
@@ -1860,6 +1861,7 @@ class NativeVideoPlayerController {
           overlayBuilder: _overlayBuilder,
         );
       },
+      fullScreenPreferredOrientations: fullScreenPreferredOrientations,
       lockToLandscape: lockToLandscape,
       onExit: () {
         // Update state when fullscreen dialog is dismissed by user (back button, etc.)
