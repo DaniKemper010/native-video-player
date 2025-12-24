@@ -1338,10 +1338,301 @@ class NativeVideoPlayerController {
     }
   }
 
+  /// Ensures that all remaining platform views have active event subscriptions
+  ///
+  /// This method checks if there are any remaining views connected to the controller,
+  /// and verifies that each has an active event subscription. If a view is missing
+  /// a subscription, it re-establishes it.
+  ///
+  /// This is critical when a platform view is disposed (e.g., fullscreen view)
+  /// and other views (e.g., inline view) still exist - we need to ensure those
+  /// remaining views can continue receiving events from the shared native player.
+  Future<void> _ensureRemainingViewsHaveSubscriptions() async {
+    // First check if there are any remaining views
+    if (_platformViewIds.isEmpty) {
+      return;
+    }
+
+    // Check each remaining view to ensure it has an active event subscription
+    for (final viewId in _platformViewIds) {
+      // If this view doesn't have a subscription or the subscription is null, re-establish it
+      final existingSubscription = _eventSubscriptions[viewId];
+      if (existingSubscription == null) {
+        // Re-establish the event channel subscription for this view
+        final EventChannel eventChannel = EventChannel(
+          'native_video_player_$viewId',
+        );
+
+        // Set up event stream and store the subscription
+        _eventSubscriptions[viewId] = eventChannel.receiveBroadcastStream().listen(
+          (dynamic eventMap) async {
+            final map = eventMap as Map<dynamic, dynamic>;
+            final String eventName = map['event'] as String;
+
+            // Handle AirPlay availability change event
+            if (eventName == 'airPlayAvailabilityChanged') {
+              final bool isAvailable = map['isAvailable'] as bool? ?? false;
+
+              // Only update global state if the value is actually different
+              // This ensures one source of truth and prevents redundant stream emissions
+              final globalManager = AirPlayStateManager.instance;
+              if (globalManager.isAirPlayAvailable != isAvailable) {
+                globalManager.updateAvailability(isAvailable);
+              }
+
+              // Also update local state for backward compatibility
+              _updateState(_state.copyWith(isAirplayAvailable: isAvailable));
+              for (final handler in _airPlayAvailabilityHandlers) {
+                handler(isAvailable);
+              }
+              return;
+            }
+
+            // Handle AirPlay connection change event
+            if (eventName == 'airPlayConnectionChanged') {
+              final bool isConnected = map['isConnected'] as bool? ?? false;
+              final bool isConnecting = map['isConnecting'] as bool? ?? false;
+              final String? deviceName = map['deviceName'] as String?;
+
+              // Only update global state if values are actually different
+              // This ensures one source of truth and prevents redundant stream emissions
+              // when multiple controllers report the same state
+              final globalManager = AirPlayStateManager.instance;
+              final bool shouldUpdate =
+                  globalManager.isAirPlayConnected != isConnected ||
+                  globalManager.isAirPlayConnecting != isConnecting ||
+                  globalManager.airPlayDeviceName != deviceName;
+
+              if (shouldUpdate) {
+                // Update global AirPlay state with connecting state and device name
+                globalManager.updateConnection(
+                  isConnected,
+                  isConnecting: isConnecting,
+                  deviceName: deviceName,
+                );
+              }
+
+              // Also update local state for backward compatibility
+              _updateState(
+                _state.copyWith(
+                  isAirplayConnected: isConnected,
+                  isAirplayConnecting: isConnecting,
+                  airPlayDeviceName: deviceName,
+                ),
+              );
+              for (final handler in _airPlayConnectionHandlers) {
+                handler(isConnected);
+              }
+              return;
+            }
+
+            // Determine if this is an activity event or control event
+            final isActivityEvent = _isActivityEvent(eventName);
+
+            if (isActivityEvent) {
+              final activityEvent = PlayerActivityEvent.fromMap(map);
+
+              // Complete initialization when we receive the isInitialized event
+              if (!_state.activityState.isInitialized &&
+                  activityEvent.state == PlayerActivityState.initialized &&
+                  _initializeCompleter != null &&
+                  !_initializeCompleter!.isCompleted) {
+                _isInitialized = true;
+                _initializeCompleter!.complete();
+              }
+
+              // Update the last non-buffering state when we receive play/pause events
+              // This ensures we can restore to the correct state after buffering
+              if (activityEvent.state == PlayerActivityState.playing ||
+                  activityEvent.state == PlayerActivityState.paused) {
+                _lastNonBufferingState = activityEvent.state;
+              }
+
+              // Update activity state
+              _updateState(_state.copyWith(activityState: activityEvent.state));
+
+              // Handle loaded events to get initial duration
+              if (activityEvent.state == PlayerActivityState.loaded) {
+                if (activityEvent.data != null) {
+                  final int duration =
+                      (activityEvent.data!['duration'] as num?)?.toInt() ?? 0;
+                  _updateState(
+                    _state.copyWith(duration: Duration(milliseconds: duration)),
+                  );
+                }
+              }
+
+              // Notify activity listeners
+              for (final handler in _activityEventHandlers) {
+                handler(activityEvent);
+              }
+            } else {
+              final controlEvent = PlayerControlEvent.fromMap(map);
+
+              // Handle fullscreen change events
+              if (controlEvent.state == PlayerControlState.fullscreenEntered ||
+                  controlEvent.state == PlayerControlState.fullscreenExited) {
+                final bool isFullscreen =
+                    controlEvent.data?['isFullscreen'] as bool? ??
+                    controlEvent.state == PlayerControlState.fullscreenEntered;
+
+                // Check if this event is coming from Android for PiP preparation
+                // Android sends fullscreenChange event before entering PiP to hide app bar/FAB
+                final bool isFromAndroidPipPreparation =
+                    PlatformUtils.isAndroid &&
+                    controlEvent.data?['fromAndroidPipPreparation'] == true;
+
+                if (isFromAndroidPipPreparation) {
+                  // Android is preparing for PiP - enter fullscreen
+                  if (isFullscreen) {
+                    // Hide custom overlay during PiP preparation
+                    // This ensures the overlay controls don't show in PiP mode
+                    // We set a flag instead of nulling _overlayBuilder so we can restore it later
+                    _hideOverlayForPip = true;
+                    _isOverlayLocked = false;
+
+                    // Enable native controls for PiP mode and enter native fullscreen
+                    // Use method channel directly to avoid state checks in enterFullScreen()
+                    unawaited(setShowNativeControls(true));
+                    unawaited(enterFullScreen());
+                  }
+                } else {
+                  // Normal fullscreen change from native side (e.g., PiP exit restoration)
+                  // Actually call the fullscreen methods to sync UI state
+                  if (isFullscreen && !_state.isFullScreen) {
+                    // Native side entered fullscreen, sync Flutter state
+                    unawaited(enterFullScreen());
+                  } else if (!isFullscreen && _state.isFullScreen) {
+                    // Native side exited fullscreen, sync Flutter state
+                    unawaited(exitFullScreen());
+                  }
+                }
+              }
+
+              // Handle time update events
+              if (controlEvent.state == PlayerControlState.timeUpdated) {
+                if (controlEvent.data != null) {
+                  final int? position =
+                      (controlEvent.data!['position'] as num?)?.toInt();
+                  final int? bufferedPosition =
+                      (controlEvent.data!['bufferedPosition'] as num?)?.toInt();
+
+                  if (position != null) {
+                    final newPosition = Duration(milliseconds: position);
+                    _updateState(_state.copyWith(currentPosition: newPosition));
+                    if (!_positionController.isClosed) {
+                      _positionController.add(newPosition);
+                    }
+                  }
+
+                  if (bufferedPosition != null) {
+                    final newBufferedPosition =
+                        Duration(milliseconds: bufferedPosition);
+                    _updateState(
+                      _state.copyWith(bufferedPosition: newBufferedPosition),
+                    );
+                    if (!_bufferedPositionController.isClosed) {
+                      _bufferedPositionController.add(newBufferedPosition);
+                    }
+                  }
+                }
+              }
+
+              // Handle quality change events
+              if (controlEvent.state == PlayerControlState.qualityChanged) {
+                if (controlEvent.data != null &&
+                    controlEvent.data!['quality'] != null) {
+                  final qualityMap = controlEvent.data!['quality'] as Map;
+                  final quality = NativeVideoPlayerQuality.fromMap(qualityMap);
+                  if (!_qualityChangedController.isClosed) {
+                    _qualityChangedController.add(quality);
+                  }
+                }
+              }
+
+              // Handle speed change events
+              if (controlEvent.state == PlayerControlState.speedChanged) {
+                if (controlEvent.data != null &&
+                    controlEvent.data!['speed'] != null) {
+                  final double speed = (controlEvent.data!['speed'] as num)
+                      .toDouble();
+                  _updateState(_state.copyWith(speed: speed));
+                }
+              }
+
+              // Handle PiP state events
+              if (controlEvent.state == PlayerControlState.pipStarted ||
+                  controlEvent.state == PlayerControlState.pipStopped) {
+                final bool isPipEnabled =
+                    controlEvent.state == PlayerControlState.pipStarted;
+
+                // When exiting PiP, restore the custom overlay if it was hidden
+                if (!isPipEnabled && _hideOverlayForPip) {
+                  _hideOverlayForPip = false;
+
+                  // Restore custom overlay controls by hiding native controls
+                  if (_overlayBuilder != null) {
+                    unawaited(setShowNativeControls(false));
+                  }
+                }
+
+                _updateState(_state.copyWith(isPipEnabled: isPipEnabled));
+              }
+
+              // Handle PiP availability change events
+              if (controlEvent.state == PlayerControlState.pipAvailabilityChanged) {
+                if (controlEvent.data != null &&
+                    controlEvent.data!['isAvailable'] != null) {
+                  final bool isAvailable =
+                      controlEvent.data!['isAvailable'] as bool;
+                  _updateState(_state.copyWith(isPipAvailable: isAvailable));
+                }
+              }
+
+              // Handle AirPlay connection state events
+              if (controlEvent.state == PlayerControlState.airPlayConnected ||
+                  controlEvent.state == PlayerControlState.airPlayDisconnected) {
+                final bool isConnected =
+                    controlEvent.state == PlayerControlState.airPlayConnected;
+                _updateState(_state.copyWith(isAirplayConnected: isConnected));
+
+                // When AirPlay connects, the native player might reset duration temporarily
+                // Re-emit the current duration to ensure it's not lost
+                if (isConnected && _state.duration != Duration.zero) {
+                  if (!_durationController.isClosed) {
+                    _durationController.add(_state.duration);
+                  }
+                }
+              }
+
+              // Update control state for other control events
+              if (controlEvent.state != PlayerControlState.timeUpdated) {
+                _updateState(_state.copyWith(controlState: controlEvent.state));
+              }
+
+              // Notify control listeners
+              for (final handler in _controlEventHandlers) {
+                handler(controlEvent);
+              }
+            }
+          },
+          onError: (dynamic error) {
+            if (!_state.activityState.isInitialized &&
+                _initializeCompleter != null &&
+                !_initializeCompleter!.isCompleted) {
+              _initializeCompleter!.completeError(error);
+            }
+          },
+        );
+      }
+    }
+  }
+
   /// Called when a platform view is disposed
   ///
   /// Unregisters the platform view from this controller.
   /// If it was the primary view, promotes another view to primary.
+  /// Ensures remaining views have active event subscriptions to maintain stream continuity.
   ///
   /// **Parameters:**
   /// - platformViewId: The ID of the platform view being disposed
@@ -1355,12 +1646,53 @@ class NativeVideoPlayerController {
     );
     _eventSubscriptions.remove(platformViewId);
 
-    // If the disposed view was the primary view, switch to another active view
-    if (_primaryPlatformViewId == platformViewId &&
-        _platformViewIds.isNotEmpty) {
-      // Use the most recent remaining view
-      final newPrimaryViewId = _platformViewIds.last;
-      _updateMethodChannel(newPrimaryViewId);
+    // Check if there are remaining views connected to the controller
+    if (_platformViewIds.isNotEmpty) {
+      // If the disposed view was the primary view, switch to another active view
+      if (_primaryPlatformViewId == platformViewId) {
+        // Use the most recent remaining view
+        final newPrimaryViewId = _platformViewIds.last;
+        _updateMethodChannel(newPrimaryViewId);
+      }
+
+      // Ensure remaining views have active event subscriptions
+      // This is critical when a video was loaded in fullscreen mode and then
+      // fullscreen exits - the inline view needs to continue receiving events
+      unawaited(_ensureRemainingViewsHaveSubscriptions());
+
+      // Re-emit current state to remaining views to ensure they're in sync
+      _emitCurrentState();
+
+      // Notify all event handler listeners about the current state
+      // This ensures listeners receive the current state after view disposal
+      for (final handler in _airPlayAvailabilityHandlers) {
+        handler(_state.isAirplayAvailable);
+      }
+
+      for (final handler in _airPlayConnectionHandlers) {
+        handler(_state.isAirplayConnected);
+      }
+
+      if (_activityEventHandlers.isNotEmpty) {
+        final currentActivityEvent = PlayerActivityEvent(
+          state: _state.activityState,
+          data: null,
+        );
+        for (final handler in _activityEventHandlers) {
+          handler(currentActivityEvent);
+        }
+      }
+
+      if (_controlEventHandlers.isNotEmpty &&
+          _state.controlState != PlayerControlState.none) {
+        final currentControlEvent = PlayerControlEvent(
+          state: _state.controlState,
+          data: null,
+        );
+        for (final handler in _controlEventHandlers) {
+          handler(currentControlEvent);
+        }
+      }
     }
   }
 
