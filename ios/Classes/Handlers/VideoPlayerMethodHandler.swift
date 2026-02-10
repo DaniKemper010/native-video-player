@@ -747,11 +747,26 @@ extension VideoPlayerView {
             fullscreenPlayerViewController.showsPlaybackControls = true
             fullscreenPlayerViewController.delegate = self
 
+            if preventFullscreenSwipeDismiss {
+                // Use .fullScreen modal style to prevent the iOS 13+ sheet dismiss gesture.
+                fullscreenPlayerViewController.modalPresentationStyle = .fullScreen
+                if #available(iOS 13.0, *) {
+                    fullscreenPlayerViewController.isModalInPresentation = true
+                }
+            }
+
             // Store reference to dismiss later
             self.fullscreenPlayerViewController = fullscreenPlayerViewController
 
             viewController.present(fullscreenPlayerViewController, animated: true) {
-                // Send event after animation completes
+                // Disable swipe/pinch gesture recognizers on the fullscreen player view hierarchy.
+                // This prevents the user from accidentally swiping up/down to exit
+                // AVPlayerViewController's internal fullscreen, which causes a black screen.
+                // Button taps (Done, play/pause, seek bar, etc.) remain fully functional.
+                if self.preventFullscreenSwipeDismiss {
+                    self.disableSwipeGestures(in: fullscreenPlayerViewController.view)
+                }
+
                 self.sendEvent("fullscreenChange", data: ["isFullscreen": true])
                 result(nil)
             }
@@ -760,10 +775,24 @@ extension VideoPlayerView {
         }
     }
 
+    /// Recursively disables pan and pinch gesture recognizers in the view hierarchy.
+    /// This prevents AVPlayerViewController's internal swipe-to-dismiss and pinch-to-shrink
+    /// gestures while keeping all button taps working.
+    private func disableSwipeGestures(in view: UIView) {
+        for gesture in view.gestureRecognizers ?? [] {
+            if gesture is UIPanGestureRecognizer || gesture is UIPinchGestureRecognizer {
+                gesture.isEnabled = false
+            }
+        }
+        for subview in view.subviews {
+            disableSwipeGestures(in: subview)
+        }
+    }
+
     func handleExitFullScreen(result: @escaping FlutterResult) {
         // Store the playback state before dismissing
         let wasPlaying = player?.rate != 0
-        
+
         // Dismiss the fullscreen player view controller if it exists
         if let fullscreenVC = fullscreenPlayerViewController {
             // Release the video layer from the fullscreen VC before dismiss so the embedded view can show it again
@@ -771,7 +800,7 @@ extension VideoPlayerView {
             fullscreenVC.dismiss(animated: true) {
                 // Clear the reference
                 self.fullscreenPlayerViewController = nil
-                
+
                 // Resume playback if it was playing before
                 if wasPlaying {
                     self.player?.play()
@@ -793,7 +822,7 @@ extension VideoPlayerView {
                 if wasPlaying {
                     self.player?.play()
                 }
-                
+
                 self.sendEvent("fullscreenChange", data: ["isFullscreen": false])
                 result(nil)
             }
