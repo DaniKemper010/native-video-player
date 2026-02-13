@@ -395,6 +395,13 @@ import QuartzCore
             handleGetAvailableSubtitleTracks(result: result)
         case "setSubtitleTrack":
             handleSetSubtitleTrack(call: call, result: result)
+        case "getAvailableAudioTracks":
+            handleGetAvailableAudioTracks(result: result)
+        case "setAudioTrack":
+            handleSetAudioTrack(call: call, result: result)
+        case "setSubtitleStyle":
+            // No-op on iOS: subtitle styling is handled by Flutter overlay widget
+            result(nil)
         case "enterFullScreen":
             handleEnterFullScreen(result: result)
         case "exitFullScreen":

@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import '../enums/native_video_player_event.dart';
 import '../fullscreen/fullscreen_manager.dart';
 import '../fullscreen/fullscreen_video_player.dart';
+import '../models/native_video_player_audio_track.dart';
 import '../models/native_video_player_media_info.dart';
 import '../models/native_video_player_quality.dart';
 import '../models/native_video_player_state.dart';
@@ -222,6 +223,11 @@ class NativeVideoPlayerController {
   /// Stream controller for sidecar subtitle visibility changes
   final StreamController<bool> _sidecarSubtitlesVisibleController =
       StreamController<bool>.broadcast();
+
+  /// Stream controller for audio track changes
+  final StreamController<NativeVideoPlayerAudioTrack?>
+      _audioTrackChangedController =
+          StreamController<NativeVideoPlayerAudioTrack?>.broadcast();
 
   /// Method channel wrapper for platform communication
   VideoPlayerMethodChannel? _methodChannel;
@@ -848,6 +854,10 @@ class NativeVideoPlayerController {
   /// Stream of sidecar subtitle visibility changes
   Stream<bool> get sidecarSubtitlesVisibleStream =>
       _sidecarSubtitlesVisibleController.stream;
+
+  /// Stream of audio track changes
+  Stream<NativeVideoPlayerAudioTrack?> get audioTrackChangedStream =>
+      _audioTrackChangedController.stream;
 
   /// Parameters passed to native side when creating the platform view
   /// Includes controller ID, autoPlay, PiP settings, media info, and fullscreen state
@@ -1867,6 +1877,45 @@ class NativeVideoPlayerController {
     await _methodChannel?.setSubtitleTrack(track);
   }
 
+  /// Gets available audio tracks from the current media
+  ///
+  /// Returns a list of audio tracks available in the HLS stream or media file.
+  /// Each track contains language, display name, and selection state.
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final audioTracks = await controller.getAvailableAudioTracks();
+  /// for (final track in audioTracks) {
+  ///   print('${track.displayName} (${track.language}) - Selected: ${track.isSelected}');
+  /// }
+  /// ```
+  Future<List<NativeVideoPlayerAudioTrack>> getAvailableAudioTracks() async {
+    final tracks = await _methodChannel?.getAvailableAudioTracks();
+    return tracks ?? <NativeVideoPlayerAudioTrack>[];
+  }
+
+  /// Sets the active audio track
+  ///
+  /// Switches the audio track without interrupting playback or losing the
+  /// current position. This enables seamless switching between language
+  /// tracks, audio descriptions, or commentary tracks.
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final tracks = await controller.getAvailableAudioTracks();
+  /// // Switch to the second audio track
+  /// if (tracks.length > 1) {
+  ///   await controller.setAudioTrack(tracks[1]);
+  /// }
+  /// ```
+  Future<void> setAudioTrack(NativeVideoPlayerAudioTrack track) async {
+    await _methodChannel?.setAudioTrack(track);
+
+    if (!_audioTrackChangedController.isClosed) {
+      _audioTrackChangedController.add(track);
+    }
+  }
+
   /// Sets the subtitle text style
   ///
   /// On Android, this adjusts ExoPlayer's SubtitleView text size natively.
@@ -2550,6 +2599,7 @@ class NativeVideoPlayerController {
     await _sidecarCuesController.close();
     await _subtitleStyleController.close();
     await _sidecarSubtitlesVisibleController.close();
+    await _audioTrackChangedController.close();
 
     // Clear platform view references
     _platformViewIds.clear();

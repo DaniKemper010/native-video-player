@@ -135,6 +135,8 @@ class VideoPlayerMethodHandler(
             "getAvailableQualities" -> handleGetAvailableQualities(result)
             "getAvailableSubtitleTracks" -> handleGetAvailableSubtitleTracks(result)
             "setSubtitleTrack" -> handleSetSubtitleTrack(call, result)
+            "getAvailableAudioTracks" -> handleGetAvailableAudioTracks(result)
+            "setAudioTrack" -> handleSetAudioTrack(call, result)
             "setSubtitleStyle" -> handleSetSubtitleStyle(call, result)
             "enterFullScreen" -> handleEnterFullScreen(result)
             "exitFullScreen" -> handleExitFullScreen(result)
@@ -879,6 +881,135 @@ class VideoPlayerMethodHandler(
         } catch (e: Exception) {
             Log.e(TAG, "Error setting subtitle track: ${e.message}", e)
             result.error("ERROR", "Failed to set subtitle track: ${e.message}", null)
+        }
+    }
+
+    /**
+     * Gets available audio tracks from the current media
+     * Returns a list of audio track info maps (index, language, displayName, isSelected, etc.)
+     */
+    @UnstableApi
+    private fun handleGetAvailableAudioTracks(result: MethodChannel.Result) {
+        try {
+            val tracks = mutableListOf<Map<String, Any>>()
+
+            val currentTracks = player.currentTracks
+
+            for (groupIndex in 0 until currentTracks.groups.size) {
+                val group = currentTracks.groups[groupIndex]
+
+                if (group.type == C.TRACK_TYPE_AUDIO) {
+                    for (trackIndex in 0 until group.length) {
+                        val format = group.getTrackFormat(trackIndex)
+                        val isSelected = group.isTrackSelected(trackIndex)
+
+                        val languageCode = format.language ?: "und"
+
+                        val displayName = format.label?.takeIf { it.isNotEmpty() }
+                            ?: languageCode.let { code ->
+                                try {
+                                    val locale = java.util.Locale(code)
+                                    locale.getDisplayLanguage(java.util.Locale.getDefault())
+                                        .takeIf { it.isNotEmpty() && it != code } ?: code
+                                } catch (e: Exception) {
+                                    code
+                                }
+                            }
+
+                        val trackInfo = mutableMapOf<String, Any>(
+                            "index" to trackIndex,
+                            "language" to languageCode,
+                            "displayName" to displayName,
+                            "isSelected" to isSelected
+                        )
+
+                        format.label?.let { trackInfo["label"] = it }
+                        if (format.channelCount > 0) {
+                            trackInfo["channels"] = format.channelCount
+                        }
+                        if (format.bitrate > 0) {
+                            trackInfo["bitrate"] = format.bitrate
+                        }
+
+                        tracks.add(trackInfo)
+                        Log.d(TAG, "🔊 Found audio track: $displayName ($languageCode) ch=${format.channelCount} - Selected: $isSelected")
+                    }
+                }
+            }
+
+            Log.d(TAG, "🔊 Total audio tracks found: ${tracks.size}")
+            result.success(tracks)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting audio tracks: ${e.message}", e)
+            result.success(emptyList<Map<String, Any>>())
+        }
+    }
+
+    /**
+     * Sets the active audio track by index
+     * Switches the audio track without interrupting playback
+     */
+    @UnstableApi
+    private fun handleSetAudioTrack(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val args = call.arguments as? Map<*, *>
+            val trackInfo = args?.get("track") as? Map<*, *>
+            val index = trackInfo?.get("index") as? Int
+
+            if (index == null) {
+                result.error("INVALID_TRACK", "Invalid audio track data", null)
+                return
+            }
+
+            val currentTracks = player.currentTracks
+            var trackFound = false
+            var selectedLanguage = "und"
+            var selectedDisplayName = "Unknown"
+
+            for (groupIndex in 0 until currentTracks.groups.size) {
+                val group = currentTracks.groups[groupIndex]
+
+                if (group.type == C.TRACK_TYPE_AUDIO && index < group.length) {
+                    val format = group.getTrackFormat(index)
+                    selectedLanguage = format.language ?: "und"
+                    selectedDisplayName = format.label?.takeIf { it.isNotEmpty() }
+                        ?: selectedLanguage
+
+                    // Use TrackSelectionOverride to select this specific track
+                    val newParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setOverrideForType(
+                            TrackSelectionParameters.TrackSelectionOverride(
+                                group.mediaTrackGroup,
+                                listOf(index)
+                            )
+                        )
+                        .build()
+
+                    player.trackSelectionParameters = newParameters
+                    trackFound = true
+                    break
+                }
+            }
+
+            if (!trackFound) {
+                result.error("INVALID_INDEX", "Invalid audio track index", null)
+                return
+            }
+
+            Log.d(TAG, "🔊 Selected audio track: $selectedDisplayName ($selectedLanguage)")
+
+            eventHandler.sendEvent("audioTrackChange", mapOf(
+                "index" to index,
+                "language" to selectedLanguage,
+                "displayName" to selectedDisplayName,
+                "isSelected" to true
+            ))
+
+            result.success(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting audio track: ${e.message}", e)
+            result.error("ERROR", "Failed to set audio track: ${e.message}", null)
         }
     }
 
