@@ -9,6 +9,7 @@
 /// - Custom overlay widgets
 /// - Now Playing integration (Control Center / lock screen)
 /// - Background playback with media notifications
+/// - External VTT subtitle support with customizable caption size
 library;
 
 export 'src/controllers/native_video_player_controller.dart';
@@ -18,7 +19,10 @@ export 'src/fullscreen/fullscreen_video_player.dart';
 export 'src/models/native_video_player_media_info.dart';
 export 'src/models/native_video_player_quality.dart';
 export 'src/models/native_video_player_state.dart';
+export 'src/models/native_video_player_subtitle_config.dart';
+export 'src/models/native_video_player_subtitle_style.dart';
 export 'src/models/native_video_player_subtitle_track.dart';
 export 'src/native_video_player_widget.dart';
 export 'src/platform/platform_utils.dart';
 export 'src/services/airplay_state_manager.dart';
+export 'src/subtitles/vtt_parser.dart';

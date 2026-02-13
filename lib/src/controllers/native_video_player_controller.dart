@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:convert' show utf8;
+import 'dart:io' show HttpClient, Platform;
 
 import 'package:floating/floating.dart';
 import 'package:flutter/foundation.dart';
@@ -12,10 +13,13 @@ import '../fullscreen/fullscreen_video_player.dart';
 import '../models/native_video_player_media_info.dart';
 import '../models/native_video_player_quality.dart';
 import '../models/native_video_player_state.dart';
+import '../models/native_video_player_subtitle_config.dart';
+import '../models/native_video_player_subtitle_style.dart';
 import '../models/native_video_player_subtitle_track.dart';
 import '../platform/platform_utils.dart';
 import '../platform/video_player_method_channel.dart';
 import '../services/airplay_state_manager.dart';
+import '../subtitles/vtt_parser.dart';
 
 /// Controller for managing native video player via platform channels
 ///
@@ -192,6 +196,32 @@ class NativeVideoPlayerController {
 
   /// Video URL set when load() is called
   String? _url;
+
+  /// External VTT subtitle URL set when load() is called with subtitleUrl
+  String? _subtitleUrl;
+
+  /// Parsed VTT cues for Flutter overlay rendering (iOS sidecar subtitles)
+  List<VttCue> _sidecarCues = <VttCue>[];
+
+  /// Current subtitle style configuration
+  NativeVideoPlayerSubtitleStyle _subtitleStyle =
+      const NativeVideoPlayerSubtitleStyle();
+
+  /// Whether sidecar subtitles are currently visible
+  bool _sidecarSubtitlesVisible = true;
+
+  /// Stream controller for sidecar subtitle cue changes
+  final StreamController<List<VttCue>> _sidecarCuesController =
+      StreamController<List<VttCue>>.broadcast();
+
+  /// Stream controller for subtitle style changes
+  final StreamController<NativeVideoPlayerSubtitleStyle>
+      _subtitleStyleController =
+          StreamController<NativeVideoPlayerSubtitleStyle>.broadcast();
+
+  /// Stream controller for sidecar subtitle visibility changes
+  final StreamController<bool> _sidecarSubtitlesVisibleController =
+      StreamController<bool>.broadcast();
 
   /// Method channel wrapper for platform communication
   VideoPlayerMethodChannel? _methodChannel;
@@ -798,6 +828,26 @@ class NativeVideoPlayerController {
   /// Stream of available qualities list changes
   Stream<List<NativeVideoPlayerQuality>> get qualitiesStream =>
       _qualitiesController.stream;
+
+  /// The parsed VTT cues for the current sidecar subtitle file
+  List<VttCue> get sidecarCues => _sidecarCues;
+
+  /// Stream of sidecar subtitle cue changes
+  Stream<List<VttCue>> get sidecarCuesStream => _sidecarCuesController.stream;
+
+  /// The current subtitle style configuration
+  NativeVideoPlayerSubtitleStyle get subtitleStyle => _subtitleStyle;
+
+  /// Stream of subtitle style changes
+  Stream<NativeVideoPlayerSubtitleStyle> get subtitleStyleStream =>
+      _subtitleStyleController.stream;
+
+  /// Whether sidecar subtitles are currently visible
+  bool get sidecarSubtitlesVisible => _sidecarSubtitlesVisible;
+
+  /// Stream of sidecar subtitle visibility changes
+  Stream<bool> get sidecarSubtitlesVisibleStream =>
+      _sidecarSubtitlesVisibleController.stream;
 
   /// Parameters passed to native side when creating the platform view
   /// Includes controller ID, autoPlay, PiP settings, media info, and fullscreen state
@@ -1607,6 +1657,8 @@ class NativeVideoPlayerController {
   ///   - licenseUrl: License server URL
   ///   - certificateUrl: Certificate URL (iOS FairPlay only)
   ///   - headers: HTTP headers for license requests
+  /// - subtitleUrl: Optional URL to an external .vtt subtitle file (sidecar subtitles)
+  /// - subtitleConfig: Optional configuration for the sidecar subtitle track (language, label)
   ///
   /// **Returns:**
   /// A Future that completes when the video is loaded
@@ -1616,6 +1668,8 @@ class NativeVideoPlayerController {
     required String url,
     Map<String, String>? headers,
     Map<String, dynamic>? drmConfig,
+    String? subtitleUrl,
+    NativeVideoPlayerSubtitleConfig? subtitleConfig,
   }) async {
     if (_state.activityState.isLoaded) {
       return;
@@ -1635,6 +1689,11 @@ class NativeVideoPlayerController {
     }
 
     _url = url;
+    _subtitleUrl = subtitleUrl;
+
+    // Determine if sidecar subtitles should be handled on the Dart side (iOS)
+    // On Android, pass the subtitleUrl to native ExoPlayer for native handling
+    final bool useNativeSidecar = !kIsWeb && Platform.isAndroid;
 
     try {
       await _methodChannel!.load(
@@ -1643,7 +1702,17 @@ class NativeVideoPlayerController {
         headers: headers,
         mediaInfo: mediaInfo?.toMap(),
         drmConfig: drmConfig,
+        subtitleUrl: useNativeSidecar ? subtitleUrl : null,
+        subtitleConfig: useNativeSidecar ? subtitleConfig?.toMap() : null,
       );
+
+      // On iOS, fetch and parse VTT file in Dart for overlay rendering
+      if (subtitleUrl != null && !useNativeSidecar) {
+        unawaited(_fetchAndParseSidecarVtt(
+          subtitleUrl,
+          selected: subtitleConfig?.selected ?? true,
+        ));
+      }
 
       // Fetch available qualities after loading
       final qualities = await _methodChannel!.getAvailableQualities();
@@ -1687,39 +1756,36 @@ class NativeVideoPlayerController {
   ///   - licenseUrl: License server URL
   ///   - certificateUrl: Certificate URL (iOS FairPlay only)
   ///   - headers: HTTP headers for license requests
+  /// - subtitleUrl: Optional URL to an external .vtt subtitle file
+  /// - subtitleConfig: Optional configuration for the sidecar subtitle track
   ///
   /// **Example:**
   /// ```dart
-  /// // Load HLS stream
+  /// // Load MP4 with external VTT subtitles
   /// await controller.loadUrl(
-  ///   url: 'https://example.com/video.m3u8',
-  /// );
-  ///
-  /// // Load MP4 with custom headers
-  /// await controller.loadUrl(
-  ///   url: 'https://example.com/video.mp4',
-  ///   headers: {'Referer': 'https://example.com'},
-  /// );
-  ///
-  /// // Load with DRM (FairPlay on iOS)
-  /// await controller.loadUrl(
-  ///   url: 'https://example.com/stream.m3u8',
-  ///   drmConfig: {
-  ///     'type': 'fairplay',
-  ///     'licenseUrl': 'https://license.server.com/get',
-  ///     'certificateUrl': 'https://cert.server.com/cert.der',
-  ///     'headers': {
-  ///       'Authorization': 'Bearer <token>'
-  ///     }
-  ///   }
+  ///   url: 'https://example.com/movie.mp4',
+  ///   subtitleUrl: 'https://example.com/subs_en.vtt',
+  ///   subtitleConfig: NativeVideoPlayerSubtitleConfig(
+  ///     language: 'en',
+  ///     label: 'English',
+  ///     selected: true,
+  ///   ),
   /// );
   /// ```
   Future<void> loadUrl({
     required String url,
     Map<String, String>? headers,
     Map<String, dynamic>? drmConfig,
+    String? subtitleUrl,
+    NativeVideoPlayerSubtitleConfig? subtitleConfig,
   }) async {
-    return load(url: url, headers: headers, drmConfig: drmConfig);
+    return load(
+      url: url,
+      headers: headers,
+      drmConfig: drmConfig,
+      subtitleUrl: subtitleUrl,
+      subtitleConfig: subtitleConfig,
+    );
   }
 
   /// Loads a local video file into the player
@@ -1799,6 +1865,75 @@ class NativeVideoPlayerController {
   /// Pass a track with index -1 or use NativeVideoPlayerSubtitleTrack.off() to disable subtitles
   Future<void> setSubtitleTrack(NativeVideoPlayerSubtitleTrack track) async {
     await _methodChannel?.setSubtitleTrack(track);
+  }
+
+  /// Sets the subtitle text style
+  ///
+  /// On Android, this adjusts ExoPlayer's SubtitleView text size natively.
+  /// On iOS with sidecar VTT subtitles, this updates the Flutter overlay widget.
+  /// On iOS with HLS-embedded subtitles, the system settings dictate size.
+  ///
+  /// **Example:**
+  /// ```dart
+  /// await controller.setSubtitleStyle(
+  ///   NativeVideoPlayerSubtitleStyle(fontSize: 20.0),
+  /// );
+  /// ```
+  Future<void> setSubtitleStyle(NativeVideoPlayerSubtitleStyle style) async {
+    _subtitleStyle = style;
+    if (!_subtitleStyleController.isClosed) {
+      _subtitleStyleController.add(style);
+    }
+
+    // On Android, also send to native side for ExoPlayer SubtitleView
+    if (!kIsWeb && Platform.isAndroid) {
+      await _methodChannel?.setSubtitleStyle(style);
+    }
+  }
+
+  /// Sets visibility of sidecar (external VTT) subtitles
+  ///
+  /// This controls the Flutter overlay subtitle display.
+  /// For HLS-embedded subtitles, use [setSubtitleTrack] instead.
+  void setSidecarSubtitlesVisible(bool visible) {
+    if (_sidecarSubtitlesVisible != visible) {
+      _sidecarSubtitlesVisible = visible;
+      if (!_sidecarSubtitlesVisibleController.isClosed) {
+        _sidecarSubtitlesVisibleController.add(visible);
+      }
+    }
+  }
+
+  /// Fetches and parses an external VTT subtitle file for Dart overlay rendering
+  Future<void> _fetchAndParseSidecarVtt(
+    String vttUrl, {
+    bool selected = true,
+  }) async {
+    try {
+      final uri = Uri.parse(vttUrl);
+      final httpClient = HttpClient();
+      final request = await httpClient.getUrl(uri);
+      final response = await request.close();
+
+      if (response.statusCode == 200) {
+        final body = await response.transform(utf8.decoder).join();
+        final cues = VttParser.parse(body);
+        _sidecarCues = cues;
+        _sidecarSubtitlesVisible = selected;
+        if (!_sidecarCuesController.isClosed) {
+          _sidecarCuesController.add(cues);
+        }
+        if (!_sidecarSubtitlesVisibleController.isClosed) {
+          _sidecarSubtitlesVisibleController.add(selected);
+        }
+        debugPrint('Parsed ${cues.length} VTT cues from $vttUrl');
+      } else {
+        debugPrint('Failed to fetch VTT: HTTP ${response.statusCode}');
+      }
+      httpClient.close();
+    } catch (e) {
+      debugPrint('Error fetching/parsing VTT subtitle file: $e');
+    }
   }
 
   /// Returns whether Picture-in-Picture is available on this device
@@ -2412,6 +2547,9 @@ class NativeVideoPlayerController {
     await _qualityChangedController.close();
     await _qualitiesController.close();
     await _isOverlayLockedController.close();
+    await _sidecarCuesController.close();
+    await _subtitleStyleController.close();
+    await _sidecarSubtitlesVisibleController.close();
 
     // Clear platform view references
     _platformViewIds.clear();
@@ -2421,6 +2559,10 @@ class NativeVideoPlayerController {
     // Clear overlay and fullscreen references
     _overlayBuilder = null;
     _dartFullscreenCloseCallback = null;
+
+    // Clear subtitle state
+    _sidecarCues = <VttCue>[];
+    _subtitleUrl = null;
 
     // Clear other state
     _methodChannel = null;
