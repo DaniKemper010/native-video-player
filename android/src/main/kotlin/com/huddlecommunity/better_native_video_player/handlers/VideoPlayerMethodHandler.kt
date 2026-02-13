@@ -9,6 +9,7 @@ import android.os.Build
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionParameters
@@ -17,7 +18,9 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -71,6 +74,9 @@ class VideoPlayerMethodHandler(
 
     // Callback to handle fullscreen requests from Flutter
     var onFullscreenRequest: ((Boolean) -> Unit)? = null
+
+    // Callback to set subtitle text size on the PlayerView's SubtitleView
+    var onSetSubtitleStyle: ((Float, Int?, Int?) -> Unit)? = null
 
     private fun requestAudioFocusForPlayback() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -129,6 +135,7 @@ class VideoPlayerMethodHandler(
             "getAvailableQualities" -> handleGetAvailableQualities(result)
             "getAvailableSubtitleTracks" -> handleGetAvailableSubtitleTracks(result)
             "setSubtitleTrack" -> handleSetSubtitleTrack(call, result)
+            "setSubtitleStyle" -> handleSetSubtitleStyle(call, result)
             "enterFullScreen" -> handleEnterFullScreen(result)
             "exitFullScreen" -> handleExitFullScreen(result)
             "isAirPlayAvailable" -> handleIsAirPlayAvailable(result)
@@ -157,6 +164,8 @@ class VideoPlayerMethodHandler(
         val headers = args["headers"] as? Map<String, String>
         val mediaInfo = args["mediaInfo"] as? Map<String, Any>
         val drmConfig = args["drmConfig"] as? Map<*, *>
+        val subtitleUrl = args["subtitleUrl"] as? String
+        val subtitleConfig = args["subtitleConfig"] as? Map<*, *>
 
         // Store media info in the VideoPlayerView
         updateMediaInfo?.invoke(mediaInfo)
@@ -262,8 +271,34 @@ class VideoPlayerMethodHandler(
                 .createMediaSource(mediaItem)
         }
 
+        // If a sidecar subtitle URL is provided, merge it with the main media source
+        val finalMediaSource: MediaSource = if (subtitleUrl != null) {
+            Log.d(TAG, "Adding sidecar VTT subtitle: $subtitleUrl")
+            val subtitleLanguage = (subtitleConfig?.get("language") as? String) ?: "en"
+            val subtitleLabel = (subtitleConfig?.get("label") as? String) ?: "Subtitles"
+            val subtitleSelected = (subtitleConfig?.get("selected") as? Boolean) ?: true
+
+            val subtitleConfiguration = MediaItem.SubtitleConfiguration.Builder(
+                android.net.Uri.parse(subtitleUrl)
+            )
+                .setMimeType(MimeTypes.TEXT_VTT)
+                .setLanguage(subtitleLanguage)
+                .setLabel(subtitleLabel)
+                .setSelectionFlags(
+                    if (subtitleSelected) C.SELECTION_FLAG_DEFAULT else 0
+                )
+                .build()
+
+            val subtitleMediaSource = SingleSampleMediaSource.Factory(finalDataSourceFactory)
+                .createMediaSource(subtitleConfiguration, C.TIME_UNSET)
+
+            MergingMediaSource(mediaSource, subtitleMediaSource)
+        } else {
+            mediaSource
+        }
+
         // Set media source
-        player.setMediaSource(mediaSource)
+        player.setMediaSource(finalMediaSource)
         player.prepare()
 
         // Configure HDR settings for ExoPlayer using TrackSelectionParameters
@@ -844,6 +879,29 @@ class VideoPlayerMethodHandler(
         } catch (e: Exception) {
             Log.e(TAG, "Error setting subtitle track: ${e.message}", e)
             result.error("ERROR", "Failed to set subtitle track: ${e.message}", null)
+        }
+    }
+
+    /**
+     * Sets the subtitle text style (font size, colors)
+     * Adjusts ExoPlayer's SubtitleView text size via callback to VideoPlayerView
+     */
+    private fun handleSetSubtitleStyle(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val args = call.arguments as? Map<*, *>
+            val fontSize = (args?.get("fontSize") as? Double)?.toFloat()
+            val fontColor = (args?.get("fontColor") as? Number)?.toInt()
+            val backgroundColor = (args?.get("backgroundColor") as? Number)?.toInt()
+
+            if (fontSize != null) {
+                onSetSubtitleStyle?.invoke(fontSize, fontColor, backgroundColor)
+                Log.d(TAG, "📝 Subtitle style set - fontSize: $fontSize")
+            }
+
+            result.success(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting subtitle style: ${e.message}", e)
+            result.error("ERROR", "Failed to set subtitle style: ${e.message}", null)
         }
     }
 }

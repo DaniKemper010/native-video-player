@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../models/native_video_player_quality.dart';
+import '../models/native_video_player_subtitle_style.dart';
 import '../models/native_video_player_subtitle_track.dart';
 
 /// Handles all method channel communication with the native platform
@@ -19,6 +20,8 @@ class VideoPlayerMethodChannel {
     Map<String, String>? headers,
     Map<String, dynamic>? mediaInfo,
     Map<String, dynamic>? drmConfig,
+    String? subtitleUrl,
+    Map<String, dynamic>? subtitleConfig,
   }) async {
     final Map<String, Object> params = <String, Object>{
       'url': url,
@@ -36,6 +39,14 @@ class VideoPlayerMethodChannel {
 
     if (drmConfig != null) {
       params['drmConfig'] = drmConfig;
+    }
+
+    if (subtitleUrl != null) {
+      params['subtitleUrl'] = subtitleUrl;
+    }
+
+    if (subtitleConfig != null) {
+      params['subtitleConfig'] = subtitleConfig;
     }
 
     await _methodChannel.invokeMethod<void>('load', params);
@@ -384,6 +395,24 @@ class VideoPlayerMethodChannel {
       );
     } catch (e) {
       debugPrint('Error calling ensureSurfaceConnected: $e');
+    }
+  }
+
+  /// Sets the subtitle text style on the native player
+  ///
+  /// On Android, this adjusts ExoPlayer's SubtitleView text size.
+  /// On iOS, subtitle styling is handled by the Flutter overlay widget.
+  Future<void> setSubtitleStyle(NativeVideoPlayerSubtitleStyle style) async {
+    try {
+      await _methodChannel.invokeMethod<void>(
+        'setSubtitleStyle',
+        <String, Object>{
+          'viewId': primaryPlatformViewId,
+          ...style.toMap(),
+        },
+      );
+    } catch (e) {
+      debugPrint('Error calling setSubtitleStyle: $e');
     }
   }
 
