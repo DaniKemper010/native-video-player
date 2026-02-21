@@ -9,6 +9,7 @@ import android.os.Build
 import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionParameters
@@ -17,7 +18,9 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -71,6 +74,9 @@ class VideoPlayerMethodHandler(
 
     // Callback to handle fullscreen requests from Flutter
     var onFullscreenRequest: ((Boolean) -> Unit)? = null
+
+    // Callback to set subtitle text size on the PlayerView's SubtitleView
+    var onSetSubtitleStyle: ((Float, Int?, Int?) -> Unit)? = null
 
     private fun requestAudioFocusForPlayback() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -129,6 +135,9 @@ class VideoPlayerMethodHandler(
             "getAvailableQualities" -> handleGetAvailableQualities(result)
             "getAvailableSubtitleTracks" -> handleGetAvailableSubtitleTracks(result)
             "setSubtitleTrack" -> handleSetSubtitleTrack(call, result)
+            "getAvailableAudioTracks" -> handleGetAvailableAudioTracks(result)
+            "setAudioTrack" -> handleSetAudioTrack(call, result)
+            "setSubtitleStyle" -> handleSetSubtitleStyle(call, result)
             "enterFullScreen" -> handleEnterFullScreen(result)
             "exitFullScreen" -> handleExitFullScreen(result)
             "isAirPlayAvailable" -> handleIsAirPlayAvailable(result)
@@ -157,6 +166,8 @@ class VideoPlayerMethodHandler(
         val headers = args["headers"] as? Map<String, String>
         val mediaInfo = args["mediaInfo"] as? Map<String, Any>
         val drmConfig = args["drmConfig"] as? Map<*, *>
+        val subtitleUrl = args["subtitleUrl"] as? String
+        val subtitleConfig = args["subtitleConfig"] as? Map<*, *>
 
         // Store media info in the VideoPlayerView
         updateMediaInfo?.invoke(mediaInfo)
@@ -262,8 +273,34 @@ class VideoPlayerMethodHandler(
                 .createMediaSource(mediaItem)
         }
 
+        // If a sidecar subtitle URL is provided, merge it with the main media source
+        val finalMediaSource: MediaSource = if (subtitleUrl != null) {
+            Log.d(TAG, "Adding sidecar VTT subtitle: $subtitleUrl")
+            val subtitleLanguage = (subtitleConfig?.get("language") as? String) ?: "en"
+            val subtitleLabel = (subtitleConfig?.get("label") as? String) ?: "Subtitles"
+            val subtitleSelected = (subtitleConfig?.get("selected") as? Boolean) ?: true
+
+            val subtitleConfiguration = MediaItem.SubtitleConfiguration.Builder(
+                android.net.Uri.parse(subtitleUrl)
+            )
+                .setMimeType(MimeTypes.TEXT_VTT)
+                .setLanguage(subtitleLanguage)
+                .setLabel(subtitleLabel)
+                .setSelectionFlags(
+                    if (subtitleSelected) C.SELECTION_FLAG_DEFAULT else 0
+                )
+                .build()
+
+            val subtitleMediaSource = SingleSampleMediaSource.Factory(finalDataSourceFactory)
+                .createMediaSource(subtitleConfiguration, C.TIME_UNSET)
+
+            MergingMediaSource(mediaSource, subtitleMediaSource)
+        } else {
+            mediaSource
+        }
+
         // Set media source
-        player.setMediaSource(mediaSource)
+        player.setMediaSource(finalMediaSource)
         player.prepare()
 
         // Configure HDR settings for ExoPlayer using TrackSelectionParameters
@@ -844,6 +881,158 @@ class VideoPlayerMethodHandler(
         } catch (e: Exception) {
             Log.e(TAG, "Error setting subtitle track: ${e.message}", e)
             result.error("ERROR", "Failed to set subtitle track: ${e.message}", null)
+        }
+    }
+
+    /**
+     * Gets available audio tracks from the current media
+     * Returns a list of audio track info maps (index, language, displayName, isSelected, etc.)
+     */
+    @UnstableApi
+    private fun handleGetAvailableAudioTracks(result: MethodChannel.Result) {
+        try {
+            val tracks = mutableListOf<Map<String, Any>>()
+
+            val currentTracks = player.currentTracks
+
+            for (groupIndex in 0 until currentTracks.groups.size) {
+                val group = currentTracks.groups[groupIndex]
+
+                if (group.type == C.TRACK_TYPE_AUDIO) {
+                    for (trackIndex in 0 until group.length) {
+                        val format = group.getTrackFormat(trackIndex)
+                        val isSelected = group.isTrackSelected(trackIndex)
+
+                        val languageCode = format.language ?: "und"
+
+                        val displayName = format.label?.takeIf { it.isNotEmpty() }
+                            ?: languageCode.let { code ->
+                                try {
+                                    val locale = java.util.Locale(code)
+                                    locale.getDisplayLanguage(java.util.Locale.getDefault())
+                                        .takeIf { it.isNotEmpty() && it != code } ?: code
+                                } catch (e: Exception) {
+                                    code
+                                }
+                            }
+
+                        val trackInfo = mutableMapOf<String, Any>(
+                            "index" to trackIndex,
+                            "language" to languageCode,
+                            "displayName" to displayName,
+                            "isSelected" to isSelected
+                        )
+
+                        format.label?.let { trackInfo["label"] = it }
+                        if (format.channelCount > 0) {
+                            trackInfo["channels"] = format.channelCount
+                        }
+                        if (format.bitrate > 0) {
+                            trackInfo["bitrate"] = format.bitrate
+                        }
+
+                        tracks.add(trackInfo)
+                        Log.d(TAG, "🔊 Found audio track: $displayName ($languageCode) ch=${format.channelCount} - Selected: $isSelected")
+                    }
+                }
+            }
+
+            Log.d(TAG, "🔊 Total audio tracks found: ${tracks.size}")
+            result.success(tracks)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting audio tracks: ${e.message}", e)
+            result.success(emptyList<Map<String, Any>>())
+        }
+    }
+
+    /**
+     * Sets the active audio track by index
+     * Switches the audio track without interrupting playback
+     */
+    @UnstableApi
+    private fun handleSetAudioTrack(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val args = call.arguments as? Map<*, *>
+            val trackInfo = args?.get("track") as? Map<*, *>
+            val index = trackInfo?.get("index") as? Int
+
+            if (index == null) {
+                result.error("INVALID_TRACK", "Invalid audio track data", null)
+                return
+            }
+
+            val currentTracks = player.currentTracks
+            var trackFound = false
+            var selectedLanguage = "und"
+            var selectedDisplayName = "Unknown"
+
+            for (groupIndex in 0 until currentTracks.groups.size) {
+                val group = currentTracks.groups[groupIndex]
+
+                if (group.type == C.TRACK_TYPE_AUDIO && index < group.length) {
+                    val format = group.getTrackFormat(index)
+                    selectedLanguage = format.language ?: "und"
+                    selectedDisplayName = format.label?.takeIf { it.isNotEmpty() }
+                        ?: selectedLanguage
+
+                    // Use TrackSelectionOverride to select this specific track
+                    val newParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setOverrideForType(
+                            TrackSelectionParameters.TrackSelectionOverride(
+                                group.mediaTrackGroup,
+                                listOf(index)
+                            )
+                        )
+                        .build()
+
+                    player.trackSelectionParameters = newParameters
+                    trackFound = true
+                    break
+                }
+            }
+
+            if (!trackFound) {
+                result.error("INVALID_INDEX", "Invalid audio track index", null)
+                return
+            }
+
+            Log.d(TAG, "🔊 Selected audio track: $selectedDisplayName ($selectedLanguage)")
+
+            eventHandler.sendEvent("audioTrackChange", mapOf(
+                "index" to index,
+                "language" to selectedLanguage,
+                "displayName" to selectedDisplayName,
+                "isSelected" to true
+            ))
+
+            result.success(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting audio track: ${e.message}", e)
+            result.error("ERROR", "Failed to set audio track: ${e.message}", null)
+        }
+    }
+
+    /**
+     * Sets the subtitle text style (font size, colors)
+     * Adjusts ExoPlayer's SubtitleView text size via callback to VideoPlayerView
+     */
+    private fun handleSetSubtitleStyle(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val args = call.arguments as? Map<*, *>
+            val fontSize = (args?.get("fontSize") as? Double)?.toFloat()
+            val fontColor = (args?.get("fontColor") as? Number)?.toInt()
+            val backgroundColor = (args?.get("backgroundColor") as? Number)?.toInt()
+
+            if (fontSize != null) {
+                onSetSubtitleStyle?.invoke(fontSize, fontColor, backgroundColor)
+                Log.d(TAG, "📝 Subtitle style set - fontSize: $fontSize")
+            }
+
+            result.success(null)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting subtitle style: ${e.message}", e)
+            result.error("ERROR", "Failed to set subtitle style: ${e.message}", null)
         }
     }
 }

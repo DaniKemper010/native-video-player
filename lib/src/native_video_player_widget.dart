@@ -8,6 +8,9 @@ import 'package:flutter/services.dart';
 
 import 'controllers/native_video_player_controller.dart';
 import 'enums/native_video_player_event.dart';
+import 'models/native_video_player_subtitle_style.dart';
+import 'subtitles/subtitle_overlay_widget.dart';
+import 'subtitles/vtt_parser.dart';
 
 /// A native video player widget that wraps platform-specific video players
 /// (AVPlayerViewController on iOS, ExoPlayer on Android).
@@ -64,6 +67,15 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
   Timer? _hideTimer;
   StreamSubscription<bool>? _overlayLockSubscription;
 
+  // Sidecar subtitle state
+  List<VttCue> _sidecarCues = <VttCue>[];
+  NativeVideoPlayerSubtitleStyle _subtitleStyle =
+      const NativeVideoPlayerSubtitleStyle();
+  bool _sidecarSubtitlesVisible = true;
+  StreamSubscription<List<VttCue>>? _sidecarCuesSubscription;
+  StreamSubscription<NativeVideoPlayerSubtitleStyle>? _subtitleStyleSubscription;
+  StreamSubscription<bool>? _sidecarVisibilitySubscription;
+
   @override
   void initState() {
     super.initState();
@@ -112,6 +124,41 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
         }
       }
     });
+
+    // Initialize sidecar subtitle state from controller
+    _sidecarCues = widget.controller.sidecarCues;
+    _subtitleStyle = widget.controller.subtitleStyle;
+    _sidecarSubtitlesVisible = widget.controller.sidecarSubtitlesVisible;
+
+    // Listen for sidecar subtitle changes
+    _sidecarCuesSubscription = widget.controller.sidecarCuesStream.listen((
+      cues,
+    ) {
+      if (mounted) {
+        setState(() {
+          _sidecarCues = cues;
+        });
+      }
+    });
+
+    _subtitleStyleSubscription = widget.controller.subtitleStyleStream.listen((
+      style,
+    ) {
+      if (mounted) {
+        setState(() {
+          _subtitleStyle = style;
+        });
+      }
+    });
+
+    _sidecarVisibilitySubscription =
+        widget.controller.sidecarSubtitlesVisibleStream.listen((visible) {
+          if (mounted) {
+            setState(() {
+              _sidecarSubtitlesVisible = visible;
+            });
+          }
+        });
   }
 
   void _handleControlEvent(PlayerControlEvent event) {
@@ -198,6 +245,9 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
 
     widget.controller.removeControlListener(_handleControlEvent);
     _overlayLockSubscription?.cancel();
+    _sidecarCuesSubscription?.cancel();
+    _subtitleStyleSubscription?.cancel();
+    _sidecarVisibilitySubscription?.cancel();
     _hideTimer?.cancel();
     _overlayAnimationController.dispose();
     super.dispose();
@@ -276,21 +326,55 @@ class _NativeVideoPlayerState extends State<NativeVideoPlayer>
     );
   }
 
+  /// Builds the sidecar subtitle overlay widget (for iOS VTT rendering)
+  ///
+  /// On iOS, sidecar VTT subtitles are rendered as a Flutter overlay.
+  /// On Android, sidecar VTT subtitles are handled natively by ExoPlayer,
+  /// so this returns null.
+  Widget? _buildSubtitleOverlay() {
+    // Only show Flutter subtitle overlay on iOS (Android handles natively)
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return null;
+    }
+
+    if (_sidecarCues.isEmpty) {
+      return null;
+    }
+
+    return SubtitleOverlayWidget(
+      controller: widget.controller,
+      cues: _sidecarCues,
+      style: _subtitleStyle,
+      visible: _sidecarSubtitlesVisible,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final platformView = _buildPlatformView();
+    final subtitleOverlay = _buildSubtitleOverlay();
 
     Widget content;
 
-    // If no overlay builder is provided, use just the platform view
-    if (widget.overlayBuilder == null) {
+    // If no overlay builder is provided and no subtitles, use just the platform view
+    if (widget.overlayBuilder == null && subtitleOverlay == null) {
       content = platformView;
+    } else if (widget.overlayBuilder == null && subtitleOverlay != null) {
+      // Subtitles only, no custom overlay
+      content = Stack(
+        children: [
+          platformView,
+          subtitleOverlay,
+        ],
+      );
     } else {
-      // Wrap platform view with animated overlay in a Stack
+      // Wrap platform view with subtitle overlay and animated control overlay in a Stack
       content = Stack(
         children: [
           // Platform view
           platformView,
+          // Subtitle overlay (always visible when active, below control overlay)
+          if (subtitleOverlay != null) subtitleOverlay,
           // Transparent tap layer when overlay is hidden
           if (!_overlayVisible)
             Positioned.fill(

@@ -1282,4 +1282,117 @@ extension VideoPlayerView {
 
         result(nil)
     }
+
+    // MARK: - Audio Track Handling
+
+    func handleGetAvailableAudioTracks(result: @escaping FlutterResult) {
+        guard let playerItem = player?.currentItem,
+              let asset = playerItem.asset as? AVURLAsset else {
+            result([])
+            return
+        }
+
+        // Get all media selection options for audible characteristics (audio tracks)
+        guard let mediaSelectionGroup = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else {
+            print("🔊 No audio tracks available")
+            result([])
+            return
+        }
+
+        var tracks: [[String: Any]] = []
+
+        // Get currently selected audio option
+        let currentSelection = playerItem.currentMediaSelection.selectedMediaOption(in: mediaSelectionGroup)
+
+        // Add each audio option
+        for (index, option) in mediaSelectionGroup.options.enumerated() {
+            let isSelected = option == currentSelection
+
+            // Get language code (e.g., "en", "sl", "de")
+            let languageCode = option.extendedLanguageTag ?? option.locale?.identifier ?? "und"
+
+            // Get display name (e.g., "English", "Slovenščina", "Audio Description")
+            var displayName = option.displayName
+
+            // If display name is empty, try to get it from locale
+            if displayName.isEmpty, let locale = option.locale {
+                displayName = Locale.current.localizedString(forIdentifier: locale.identifier) ?? languageCode
+            }
+
+            // If still empty, use language code
+            if displayName.isEmpty {
+                displayName = languageCode
+            }
+
+            var trackInfo: [String: Any] = [
+                "index": index,
+                "language": languageCode,
+                "displayName": displayName,
+                "isSelected": isSelected
+            ]
+
+            // Check for accessibility characteristics (e.g., audio description)
+            if option.hasMediaCharacteristic(.describesVideoForAccessibility) {
+                trackInfo["label"] = trackInfo["label"] as? String ?? "Audio Description"
+            }
+
+            tracks.append(trackInfo)
+            print("🔊 Found audio track: \(displayName) (\(languageCode)) - Selected: \(isSelected)")
+        }
+
+        print("🔊 Total audio tracks found: \(tracks.count)")
+        result(tracks)
+    }
+
+    func handleSetAudioTrack(call: FlutterMethodCall, result: @escaping FlutterResult) {
+        guard let args = call.arguments as? [String: Any],
+              let trackInfo = args["track"] as? [String: Any],
+              let index = trackInfo["index"] as? Int else {
+            result(FlutterError(code: "INVALID_TRACK", message: "Invalid audio track data", details: nil))
+            return
+        }
+
+        guard let playerItem = player?.currentItem,
+              let asset = playerItem.asset as? AVURLAsset else {
+            result(FlutterError(code: "NO_PLAYER", message: "No player item available", details: nil))
+            return
+        }
+
+        guard let mediaSelectionGroup = asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else {
+            result(FlutterError(code: "NO_AUDIO_TRACKS", message: "No audio tracks available", details: nil))
+            return
+        }
+
+        // Validate index
+        guard index >= 0 && index < mediaSelectionGroup.options.count else {
+            result(FlutterError(code: "INVALID_INDEX", message: "Invalid audio track index", details: nil))
+            return
+        }
+
+        // Select the audio option
+        let option = mediaSelectionGroup.options[index]
+        playerItem.select(option, in: mediaSelectionGroup)
+
+        let languageCode = option.extendedLanguageTag ?? option.locale?.identifier ?? "und"
+        var displayName = option.displayName
+
+        if displayName.isEmpty, let locale = option.locale {
+            displayName = Locale.current.localizedString(forIdentifier: locale.identifier) ?? languageCode
+        }
+
+        if displayName.isEmpty {
+            displayName = languageCode
+        }
+
+        print("🔊 Selected audio track: \(displayName) (\(languageCode))")
+
+        sendEvent("audioTrackChange", data: [
+            "index": index,
+            "language": languageCode,
+            "displayName": displayName,
+            "isSelected": true
+        ])
+
+        result(nil)
+    }
 }

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.os.Build
 import android.util.Log
+import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -260,6 +261,14 @@ class VideoPlayerView(
         // Set fullscreen callback for method handler
         methodHandler.onFullscreenRequest = { enterFullscreen ->
             handleFullscreenToggleNative(enterFullscreen)
+        }
+
+        // Set subtitle style callback for method handler
+        methodHandler.onSetSubtitleStyle = { fontSize, fontColor, backgroundColor ->
+            playerView.subtitleView?.let { subtitleView ->
+                subtitleView.setFixedTextSize(TypedValue.COMPLEX_UNIT_DIP, fontSize)
+                Log.d(TAG, "📝 Subtitle text size set to ${fontSize}dp")
+            }
         }
 
         // PiP is now handled by the floating package on the Dart side
